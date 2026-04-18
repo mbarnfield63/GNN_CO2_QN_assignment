@@ -1,0 +1,12 @@
+[project]
+name = "gnn-co2-qn-assignment"
+version = "0.1.0"
+requires-python = ">=3.12, <3.13"
+dependencies = [
+    "numpy>=2.4.4",
+    "pandas>=3.0.2",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.1",
+    "torch>=2.11.0",
+    "torch-geometric>=2.7.0",
+]
