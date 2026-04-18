@@ -26,6 +26,7 @@ FEATURE_COLS = [
     "t1",
     "t2",
     "t3",
+    "polyad",
     "is_symmetric",
     "C_mass",
     "O_A_mass",

@@ -104,6 +104,7 @@ def process_single_isotope(iso_config):
         "is_marvel",
     ]
     df = df[keep_cols]
+    df["polyad"] = (2 * df["t1"]) + df["t2"]
 
     # Assign AFGL labels for inference states (Ca) with -1
     afgl_cols = ["AFGL_m1", "AFGL_m2", "AFGL_m3", "AFGL_r"]
