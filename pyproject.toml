@@ -3,10 +3,38 @@ name = "gnn-co2-qn-assignment"
 version = "0.1.0"
 requires-python = ">=3.12, <3.13"
 dependencies = [
-    "numpy>=2.4.4",
-    "pandas>=3.0.2",
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "torchaudio==2.8.0",
+    "torch-geometric",
+    "pyg-lib",
+    "torch-scatter",
+    "torch-sparse",
+    "torch-cluster",
+    "torch-spline-conv",
+    "seaborn>=0.13.2",
+    "numpy>=2.4.3",
     "scikit-learn>=1.8.0",
-    "scipy>=1.17.1",
-    "torch>=2.11.0",
-    "torch-geometric>=2.7.0",
 ]
+
+[tool.uv]
+# Tells uv where to find the pre-built wheels
+find-links = ["https://data.pyg.org/whl/torch-2.8.0+cu126.html"]
+
+# This fixes the "ModuleNotFoundError: No module named 'torch'" during install
+[tool.uv.extra-build-dependencies]
+torch-scatter = ["torch==2.8.0"]
+torch-sparse = ["torch==2.8.0"]
+torch-cluster = ["torch==2.8.0"]
+torch-spline-conv = ["torch==2.8.0"]
+pyg-lib = ["torch==2.8.0"]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
