@@ -62,7 +62,7 @@ def build_pyg_graph(df: pd.DataFrame) -> Data:
     else:
         edges = np.empty((2, 0), dtype=np.int64)
 
-    edge_index = torch.tensor(edges, dtype=torch.long)
+    edge_index = torch.tensor(edges, dtype=torch.long).contiguous()
     print(
         f"Graph constructed in {time.time() - start_time:.2f}s. Total edges: {edge_index.shape[1]:,}"
     )
@@ -85,14 +85,15 @@ def build_pyg_graph(df: pd.DataFrame) -> Data:
         "O_B_mass",
     ]
 
-    x = torch.tensor(df[feature_cols].values, dtype=torch.float)
-    y = torch.tensor(df["combinatorial_class_id"].values, dtype=torch.long)
-    iso_idx_tensor = torch.tensor(df["iso_idx_encoded"].values, dtype=torch.long)
+    x = torch.tensor(df[feature_cols].values, dtype=torch.float).contiguous()
+    y = torch.tensor(df["combinatorial_class_id"].values, dtype=torch.long).contiguous()
+    iso_idx_tensor = torch.tensor(
+        df["iso_idx_encoded"].values, dtype=torch.long
+    ).contiguous()
 
-    train_mask = torch.tensor(df["train_mask"].values, dtype=torch.bool)
-    val_mask = torch.tensor(df["val_mask"].values, dtype=torch.bool)
-    test_mask = torch.tensor(df["test_mask"].values, dtype=torch.bool)
-
+    train_mask = torch.tensor(df["train_mask"].values, dtype=torch.bool).contiguous()
+    val_mask = torch.tensor(df["val_mask"].values, dtype=torch.bool).contiguous()
+    test_mask = torch.tensor(df["test_mask"].values, dtype=torch.bool).contiguous()
     return Data(
         x=x,
         edge_index=edge_index,

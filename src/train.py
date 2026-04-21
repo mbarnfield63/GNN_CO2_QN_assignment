@@ -3,6 +3,7 @@ import numpy as np
 import time
 import torch
 import torch.nn as nn
+from torch_geometric.loader import NeighborLoader
 import os
 from tqdm import tqdm
 from scipy.optimize import linear_sum_assignment
@@ -60,26 +61,35 @@ def load_and_prepare_data():
     return data, len(FEATURE_COLS), num_isotopes, num_classes, df, mapping_df, scaler
 
 
-def evaluate_internal(model, data, mask):
-    """Calculates internal Top-1 Accuracy."""
+def evaluate_batched(model, loader, device):
+    """Calculates Top-1 Accuracy using mini-batches."""
     model.eval()
+    correct = 0
+    total = 0
     with torch.no_grad():
-        if mask.sum() == 0:
-            return 0.0
-        out = model(data.x, data.edge_index, data.iso_idx)
-        preds = out[mask].argmax(dim=1)
-        correct = (preds == data.y[mask]).sum().item()
-        return correct / mask.sum().item()
+        for batch in loader:
+            batch = batch.to(device)
+            out = model(batch.x, batch.edge_index, batch.iso_idx)
+
+            # The target nodes are the first 'batch_size' nodes in the sampled graph
+            preds = out[: batch.batch_size].argmax(dim=1)
+            true = batch.y[: batch.batch_size]
+
+            correct += (preds == true).sum().item()
+            total += batch.batch_size
+
+    return correct / total if total > 0 else 0.0
 
 
-# Add 'scaler' to the arguments
-def evaluate_physical_assignment(model, data, df, mapping_df, scaler):
+def evaluate_physical_assignment(
+    model, loader, device, num_nodes, df, mapping_df, scaler
+):
     """Enforces 1-to-1 physical constraints locally and decodes combinatorial classes."""
     model.eval()
 
     print("\nCalculating epistemic uncertainty via MC Dropout...")
     mean_probs, variance = model.mc_dropout_predict(
-        data.x, data.edge_index, data.iso_idx, num_samples=30
+        loader, device, num_nodes, num_samples=30
     )
 
     print("Applying Localized Hungarian Algorithm (per Isotope, J, Parity)...")
@@ -161,45 +171,87 @@ def main():
     data, input_dim, num_isotopes, num_classes, df, mapping_df, scaler = (
         load_and_prepare_data()
     )
-    data = data.to(device)
 
     model = CO2AssignmentGNN(
         input_dim=input_dim,
         num_isotopes=num_isotopes,
         num_classes=num_classes,
-        hidden_dim=128,
+        hidden_dim=256,
         embed_dim=8,
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-4)
     criterion = nn.CrossEntropyLoss()
 
-    print("\nTraining GNN Transductively...")
+    print("\nInitializing GPU Mini-Batching (NeighborLoader)...")
+    # Sample 10 neighbors per node, traversing 4 layers deep
+    train_loader = NeighborLoader(
+        data,
+        num_neighbors=[10, 10, 10, 10],
+        batch_size=2048,
+        input_nodes=data.train_mask,
+        shuffle=True,
+    )
+
+    val_loader = NeighborLoader(
+        data,
+        num_neighbors=[10, 10, 10, 10],
+        batch_size=2048,
+        input_nodes=data.val_mask,
+        shuffle=False,
+    )
+
+    test_loader = NeighborLoader(
+        data,
+        num_neighbors=[10, 10, 10, 10],
+        batch_size=2048,
+        input_nodes=data.test_mask,
+        shuffle=False,
+    )
+
+    print("Training Deep Residual GNN via Mini-Batches...")
     epochs = 200
 
     for epoch in range(1, epochs + 1):
         model.train()
-        optimizer.zero_grad()
+        total_loss = 0
 
-        out = model(data.x, data.edge_index, data.iso_idx)
-        loss = criterion(out[data.train_mask], data.y[data.train_mask])
+        for batch in train_loader:
+            batch = batch.to(device)
+            optimizer.zero_grad()
 
-        loss.backward()
-        optimizer.step()
+            out = model(batch.x, batch.edge_index, batch.iso_idx)
+            loss = criterion(out[: batch.batch_size], batch.y[: batch.batch_size])
+
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * batch.batch_size
 
         if epoch % 10 == 0 or epoch == 1:
-            val_acc = evaluate_internal(model, data, data.val_mask)
+            avg_loss = total_loss / data.train_mask.sum().item()
+            val_acc = evaluate_batched(model, val_loader, device)
             print(
-                f"Epoch {epoch:03d} | Loss: {loss.item():.4f} | Val Top-1 Acc: {val_acc:.4f}"
+                f"Epoch {epoch:03d} | Loss: {avg_loss:.4f} | Val Top-1 Acc: {val_acc:.4f}"
             )
 
-    test_acc = evaluate_internal(model, data, data.test_mask)
+    test_acc = evaluate_batched(model, test_loader, device)
     print(f"\nTraining Complete. Base Test Top-1 Acc: {test_acc:.4f}")
 
-    # Catch the fully assigned dataframe
-    final_df = evaluate_physical_assignment(model, data, df, mapping_df, scaler)
+    print("\nPreparing for global inference (Mini-Batched)...")
 
-    # Print the assignment callouts
+    # A loader with input_nodes=None automatically iterates over every single node in the graph safely
+    inference_loader = NeighborLoader(
+        data,
+        num_neighbors=[10, 10, 10, 10],
+        batch_size=2048,
+        shuffle=False,
+    )
+
+    num_total_nodes = data.x.shape[0]
+    final_df = evaluate_physical_assignment(
+        model, inference_loader, device, num_total_nodes, df, mapping_df, scaler
+    )
+
     print_assignment_summary(final_df, variance_threshold=0.05)
 
     end = time.time()
