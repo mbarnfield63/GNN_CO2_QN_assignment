@@ -10,7 +10,7 @@ from plotting import plot_variance_boxplot
 ITERATIONS = 5
 DATA_DIR = "data"
 UNIFIED_DATASET_PATH = os.path.join(DATA_DIR, "unified_co2_graph_data.csv")
-PLOT_PATH = os.path.join(DATA_DIR, "variance_boxplot.png")
+PLOT_PATH = os.path.join(DATA_DIR, "figures", "variance_boxplot.png")
 
 
 def main():
@@ -26,7 +26,6 @@ def main():
 
         # Step A: Train the Network
         print(f"\n>>> Running Training Phase (Generation {i})...")
-        # Using 'uv run' to ensure it executes in your managed virtual environment
         train_process = subprocess.run(["uv", "run", "src/train.py"])
 
         if train_process.returncode != 0:
@@ -51,7 +50,8 @@ def main():
     print(f"Loading data from {UNIFIED_DATASET_PATH}...")
     df = pd.read_csv(UNIFIED_DATASET_PATH)
 
-    # We only want to plot the new states the model harvested, not the original MARVEL data (Gen 0)
+    # We only want to plot the new states the model harvested
+    # not the original MARVEL data (Gen 0)
     plot_df = df[df["assignment_generation"] > 0].copy()
 
     if plot_df.empty:
