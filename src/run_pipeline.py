@@ -3,6 +3,7 @@ import os
 import pandas as pd
 
 from plotting import plot_variance_boxplot
+from metrics import calculate_final_metrics
 
 # ==========================================
 # CONFIGURATION
@@ -73,6 +74,9 @@ def main():
     summary_stats.to_csv(
         os.path.join(DATA_DIR, f"pipeline_summary_{ITERATIONS}iterations.csv")
     )
+
+    # Calculate and print final metrics on the test set using the latest assignments
+    calculate_final_metrics(df=df)
 
 
 if __name__ == "__main__":
