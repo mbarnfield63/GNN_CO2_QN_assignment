@@ -1,21 +1,4 @@
-import numpy as np
 import pandas as pd
-from scipy.optimize import linear_sum_assignment
-
-
-def strict_1_to_1_assignment(probability_matrix: np.ndarray) -> np.ndarray:
-    """
-    Takes the (N_nodes, N_classes) probability matrix from the GNN.
-    Returns an optimal 1-to-1 mapping array of length N_nodes.
-    """
-    # The Hungarian algorithm minimizes cost, so we pass negative probabilities
-    # (or 1 - probabilities) to maximize the probability sum.
-    cost_matrix = 1.0 - probability_matrix
-
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-
-    # row_ind corresponds to node indices, col_ind to assigned class IDs
-    return col_ind
 
 
 def print_assignment_summary(df: pd.DataFrame, variance_threshold: float = 0.05):

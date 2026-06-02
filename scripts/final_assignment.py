@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -26,9 +30,42 @@ def evaluate_physical_assignment_relaxed(
     model.eval()
 
     print("\nCalculating epistemic uncertainty via MC Dropout...")
-    mean_probs, variance = model.mc_dropout_predict(
+    mean_probs, variance, mean_sample_entropy = model.mc_dropout_predict(
         loader, device, num_nodes, num_samples=30
     )
+
+    print("Decoding combinatorial classes for mapping...")
+    class_to_quantum = mapping_df.set_index("class_id")[
+        ["m1", "m2", "m3", "r"]
+    ].to_dict("index")
+
+    # Extract RAW predictions before the solver touches anything
+    print("Capturing raw neural network predictions...")
+    raw_class_indices = mean_probs.argmax(dim=1).cpu().numpy()
+
+    df["raw_class_id"] = raw_class_indices
+    df["raw_m1"] = df["raw_class_id"].map(
+        lambda cid: class_to_quantum.get(cid, {"m1": -1})["m1"]
+    )
+    df["raw_m2"] = df["raw_class_id"].map(
+        lambda cid: class_to_quantum.get(cid, {"m2": -1})["m2"]
+    )
+    df["raw_m3"] = df["raw_class_id"].map(
+        lambda cid: class_to_quantum.get(cid, {"m3": -1})["m3"]
+    )
+    df["raw_r"] = df["raw_class_id"].map(
+        lambda cid: class_to_quantum.get(cid, {"r": -1})["r"]
+    )
+
+    # Extract the variance specifically for the raw predicted class
+    df["raw_variance"] = variance[np.arange(len(df)), raw_class_indices].cpu().numpy()
+
+    # Predictive entropy H(mean_probs) = -sum_c p̄_c log(p̄_c)
+    mc_pred_ent = -(mean_probs * torch.log(mean_probs + 1e-10)).sum(dim=1).numpy()
+    df["mc_predictive_entropy"] = mc_pred_ent
+
+    # BALD (epistemic uncertainty) = H(mean) - mean H(samples)
+    df["mc_bald"] = mc_pred_ent - mean_sample_entropy.numpy()
 
     print("Applying Relaxed Localized Hungarian Algorithm (per Isotope, J, Parity)...")
     optimal_class_indices = np.full(len(df), -1, dtype=int)
@@ -57,11 +94,6 @@ def evaluate_physical_assignment_relaxed(
         valid_rows = row_ind[valid_mask]
         valid_cols = col_ind[valid_mask]
         optimal_class_indices[idx[valid_rows]] = valid_cols
-
-    print("Decoding combinatorial classes...")
-    class_to_quantum = mapping_df.set_index("class_id")[
-        ["m1", "m2", "m3", "r"]
-    ].to_dict("index")
 
     df["pred_class_id"] = optimal_class_indices
     df["pred_m1"] = df["pred_class_id"].map(
@@ -140,7 +172,7 @@ def main():
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-4)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
     print("\nInitializing GPU Mini-Batching for Final Run...")
     train_loader = NeighborLoader(
@@ -160,7 +192,7 @@ def main():
     )
 
     print(f"Training Deep Residual GNN on fully-bootstrapped Generation 5 data...")
-    epochs = 200
+    epochs = 100
 
     for epoch in range(1, epochs + 1):
         model.train()

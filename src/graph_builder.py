@@ -10,14 +10,14 @@ def build_pyg_graph(df: pd.DataFrame) -> Data:
     start_time = time.time()
 
     df_logic = df[
-        ["node_id", "t1", "t2", "t3", "isotope_id", "J", "parity_encoded", "energy"]
+        ["node_id", "polyad", "isotope_id", "J", "parity_encoded", "energy"]
     ].copy()
     src_list, dst_list = [], []
 
     # ------------------------------------------------------------------
     # 1. INTER-ISOTOPE & PERTURBATION EDGES (1D Energy Chains)
     # ------------------------------------------------------------------
-    grouped_inter = df_logic.groupby(["t1", "t2", "t3", "J", "parity_encoded"])
+    grouped_inter = df_logic.groupby(["polyad", "J", "parity_encoded"])
     for _, group in grouped_inter:
         if len(group) > 1:
             group = group.sort_values("energy")
@@ -38,7 +38,7 @@ def build_pyg_graph(df: pd.DataFrame) -> Data:
         df_logic,
         df_target,
         on="energy",
-        by=["t1", "t2", "t3", "isotope_id"],
+        by=["polyad", "isotope_id"],
         direction="nearest",
         suffixes=("_src", "_dst"),
     )
