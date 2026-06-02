@@ -109,8 +109,11 @@ def main():
         )
 
     # ── Figure 3: Energy Coverage by Generation ───────────────────────────────
+    # Must use df_preds (assigned_co2_predictions.csv): df_final (unified dataset)
+    # has assignment_generation but lacks pred_class_id, so only MARVEL states pass
+    # the plot filter.
     plot_energy_coverage_by_generation(
-        df_final,
+        df_preds,
         save_path=os.path.join(FIGURES_DIR, "energy_coverage_by_generation.png"),
     )
 

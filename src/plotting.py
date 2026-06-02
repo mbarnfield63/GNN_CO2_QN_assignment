@@ -444,93 +444,80 @@ def plot_pipeline_progression(metrics_history, save_path):
 
 def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     """
-    Stacked area/histogram showing which energy range each bootstrap generation
-    covers. Demonstrates that the pipeline genuinely extends assignments into
-    the high-energy chaotic frontier rather than just re-assigning easy states.
+    Stacked histogram showing which energy range each bootstrap generation covers.
 
-    Generation 0 (MARVEL) is always plotted at the base.
+    Expects df_preds (assigned_co2_predictions.csv) which has both pred_class_id
+    and assignment_generation. Generation 0 is split into MARVEL (is_marvel=True)
+    and initial Ca assignments (is_marvel=False, assignment_generation=0).
     """
     print("Generating Energy Coverage by Generation Plot...")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
-    # Use assigned states only (pred_class_id >= 0 or is_marvel)
+    df = df[df["energy"] <= 15000].copy()
+
+    # Build segments: each is a (mask, label, color) tuple stacked bottom-to-top.
+    marvel_mask = df["is_marvel"] == True
     has_pred = "pred_class_id" in df.columns
-    pred_filter = (df["pred_class_id"] >= 0) if has_pred else pd.Series(False, index=df.index)
-    plot_df = df[(df["is_marvel"] == True) | pred_filter].copy()
 
-    # Cap at 15000 to match the dataset cutoff.
-    plot_df = plot_df[plot_df["energy"] <= 15000].copy()
+    segments = []
 
-    max_gen = int(plot_df["assignment_generation"].max())
-    gen_labels = {0: "MARVEL (Gen 0)"}
-    for g in range(1, max_gen + 1):
-        gen_labels[g] = f"Bootstrap Gen {g}"
+    # Base: MARVEL states
+    segments.append((marvel_mask, "MARVEL", colors[LBL_MARVEL]))
 
-    gen_colors = {g: GEN_COLORS.get(g, GEN_COLORS[5]) for g in range(max_gen + 1)}
+    if has_pred:
+        # Ca states assigned in the initial run (never harvested into training)
+        ca_gen0_mask = (~df["is_marvel"]) & (df["assignment_generation"] == 0) & (df["pred_class_id"] >= 0)
+        segments.append((ca_gen0_mask, "Initial Ca (Gen 0)", "#b5cf6b"))  # muted yellow-green
+
+        max_gen = int(df.loc[~df["is_marvel"], "assignment_generation"].max())
+        for g in range(1, max_gen + 1):
+            ca_gen_mask = (~df["is_marvel"]) & (df["assignment_generation"] == g) & (df["pred_class_id"] >= 0)
+            segments.append((ca_gen_mask, f"Bootstrap Gen {g}", GEN_COLORS.get(g, GEN_COLORS[5])))
+    else:
+        # Fallback: unified dataset with no pred_class_id — only MARVEL visible
+        print("  Warning: pred_class_id not found; only MARVEL states will be shown.")
 
     bins = np.arange(0, 15001, bin_size)
 
     fig, (ax_main, ax_cumul) = plt.subplots(
-        2,
-        1,
-        figsize=(13, 9),
+        2, 1, figsize=(13, 9),
         gridspec_kw={"height_ratios": [2, 1]},
         sharex=True,
     )
 
-    # ── Panel A: Per-generation stacked histogram ─────────────────────────────
+    # ── Panel A: Per-segment stacked histogram ────────────────────────────────
     bottoms = np.zeros(len(bins) - 1)
-    gen_order = list(range(max_gen + 1))
-
-    for gen in gen_order:
-        gen_mask = plot_df["assignment_generation"] == gen
-        counts, _ = np.histogram(plot_df.loc[gen_mask, "energy"], bins=bins)
+    for mask, label, color in segments:
+        counts, _ = np.histogram(df.loc[mask, "energy"], bins=bins)
         ax_main.bar(
-            bins[:-1],
-            counts,
-            width=bin_size,
-            bottom=bottoms,
-            color=gen_colors[gen],
-            label=gen_labels[gen],
-            alpha=0.85,
-            align="edge",
-            edgecolor="none",
+            bins[:-1], counts, width=bin_size, bottom=bottoms,
+            color=color, label=label, alpha=0.85, align="edge", edgecolor="none",
         )
         bottoms += counts
 
     ax_main.set_ylabel("Number of Assigned States")
     ax_main.set_title(
         "A  —  Energy Coverage: States Assigned per Bootstrap Generation",
-        loc="left",
-        fontweight="bold",
-        fontsize=12,
+        loc="left", fontweight="bold", fontsize=12,
     )
     ax_main.legend(loc="upper left", fontsize=10)
     ax_main.grid(axis="y", linestyle="--", alpha=0.4)
 
-    # ── Panel B: Cumulative coverage fraction ─────────────────────────────────
-    total_counts, _ = np.histogram(plot_df["energy"], bins=bins)
-    marvel_counts, _ = np.histogram(
-        plot_df.loc[plot_df["is_marvel"] == True, "energy"], bins=bins
-    )
+    # ── Panel B: ML fraction per energy bin ───────────────────────────────────
+    if has_pred:
+        ml_mask = (~df["is_marvel"]) & (df["pred_class_id"] >= 0)
+        total_counts, _ = np.histogram(df.loc[marvel_mask | ml_mask, "energy"], bins=bins)
+        ml_counts, _ = np.histogram(df.loc[ml_mask, "energy"], bins=bins)
+    else:
+        total_counts, _ = np.histogram(df.loc[marvel_mask, "energy"], bins=bins)
+        ml_counts = np.zeros_like(total_counts)
 
-    # Avoid division by zero in empty bins
     with np.errstate(invalid="ignore", divide="ignore"):
-        ml_fraction = np.where(
-            total_counts > 0,
-            (total_counts - marvel_counts) / total_counts * 100,
-            0,
-        )
+        ml_fraction = np.where(total_counts > 0, ml_counts / total_counts * 100, 0)
 
     ax_cumul.bar(
-        bins[:-1],
-        ml_fraction,
-        width=bin_size,
-        color="#3498db",
-        alpha=0.75,
-        align="edge",
-        edgecolor="none",
-        label="ML-assigned fraction of bin",
+        bins[:-1], ml_fraction, width=bin_size, color="#3498db",
+        alpha=0.75, align="edge", edgecolor="none", label="ML-assigned fraction of bin",
     )
     ax_cumul.axhline(
         50, color="#e74c3c", linestyle="--", linewidth=1.5, label="50% ML coverage"
@@ -539,9 +526,7 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     ax_cumul.set_ylabel("ML-Assigned (%)")
     ax_cumul.set_title(
         "B  —  Fraction of Each Energy Bin Assigned by ML (vs. MARVEL)",
-        loc="left",
-        fontweight="bold",
-        fontsize=12,
+        loc="left", fontweight="bold", fontsize=12,
     )
     ax_cumul.set_ylim(0, 105)
     ax_cumul.legend(loc="upper left", fontsize=10)
@@ -549,8 +534,7 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
 
     fig.suptitle(
         "CO₂ Pipeline — Energy Coverage Across Bootstrap Generations",
-        fontsize=14,
-        fontweight="bold",
+        fontsize=14, fontweight="bold",
     )
 
     plt.tight_layout()
