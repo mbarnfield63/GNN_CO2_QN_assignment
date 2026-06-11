@@ -447,95 +447,67 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     Stacked histogram showing which energy range each bootstrap generation covers.
 
     Expects df_preds (assigned_co2_predictions.csv) which has both pred_class_id
-    and assignment_generation. Generation 0 is split into MARVEL (is_marvel=True)
-    and initial Ca assignments (is_marvel=False, assignment_generation=0).
+    and assignment_generation. Generation 0 Ca is hatched to distinguish it as the
+    initial GNN pass (not a bootstrapped generation). Unassigned Ca states are shown
+    on top in a colour outside the viridis scale.
     """
     print("Generating Energy Coverage by Generation Plot...")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
     df = df[df["energy"] <= 15000].copy()
 
-    # Build segments: each is a (mask, label, color) tuple stacked bottom-to-top.
     marvel_mask = df["is_marvel"] == True
     has_pred = "pred_class_id" in df.columns
 
+    # Each segment: (mask, label, color, hatch)
     segments = []
+    segments.append((marvel_mask, "MARVEL (Ground Truth)", colors[LBL_MARVEL], None))
 
-    # Base: MARVEL states
-    segments.append((marvel_mask, "MARVEL", colors[LBL_MARVEL]))
+    UNASSIGNED_COLOR = "#c0c0c0"  # silver-gray — outside viridis scale
 
     if has_pred:
-        # Ca states assigned in the initial run (never harvested into training)
-        ca_gen0_mask = (~df["is_marvel"]) & (df["assignment_generation"] == 0) & (df["pred_class_id"] >= 0)
-        segments.append((ca_gen0_mask, "Initial Ca (Gen 0)", "#b5cf6b"))  # muted yellow-green
+        ca_gen0_mask = (
+            (~df["is_marvel"]) & (df["assignment_generation"] == 0) & (df["pred_class_id"] >= 0)
+        )
+        # Hatched to signal "initial GNN inference, not yet bootstrapped"
+        segments.append((ca_gen0_mask, "GNN Initial (Gen 0)", "#b5cf6b", "///"))
 
         max_gen = int(df.loc[~df["is_marvel"], "assignment_generation"].max())
         for g in range(1, max_gen + 1):
-            ca_gen_mask = (~df["is_marvel"]) & (df["assignment_generation"] == g) & (df["pred_class_id"] >= 0)
-            segments.append((ca_gen_mask, f"Bootstrap Gen {g}", GEN_COLORS.get(g, GEN_COLORS[5])))
+            ca_gen_mask = (
+                (~df["is_marvel"]) & (df["assignment_generation"] == g) & (df["pred_class_id"] >= 0)
+            )
+            segments.append((ca_gen_mask, f"Bootstrap Gen {g}", GEN_COLORS.get(g, GEN_COLORS[5]), None))
+
+        # Unassigned Ca on top — outside viridis scale
+        unassigned_mask = (~df["is_marvel"]) & (df["pred_class_id"] < 0)
+        segments.append((unassigned_mask, "Unassigned Ca", UNASSIGNED_COLOR, None))
     else:
-        # Fallback: unified dataset with no pred_class_id — only MARVEL visible
         print("  Warning: pred_class_id not found; only MARVEL states will be shown.")
 
     bins = np.arange(0, 15001, bin_size)
 
-    fig, (ax_main, ax_cumul) = plt.subplots(
-        2, 1, figsize=(13, 9),
-        gridspec_kw={"height_ratios": [2, 1]},
-        sharex=True,
-    )
+    fig, ax_main = plt.subplots(figsize=(13, 6))
 
-    # ── Panel A: Per-segment stacked histogram ────────────────────────────────
     bottoms = np.zeros(len(bins) - 1)
-    for mask, label, color in segments:
+    for mask, label, color, hatch in segments:
         counts, _ = np.histogram(df.loc[mask, "energy"], bins=bins)
+        ec = "black" if hatch else "none"
         ax_main.bar(
             bins[:-1], counts, width=bin_size, bottom=bottoms,
-            color=color, label=label, alpha=0.85, align="edge", edgecolor="none",
+            color=color, label=label, alpha=0.85, align="edge",
+            edgecolor=ec, linewidth=0.4, hatch=hatch,
         )
         bottoms += counts
 
-    ax_main.set_ylabel("Number of Assigned States")
+    ax_main.set_xlabel("Energy (cm⁻¹)")
+    ax_main.set_ylabel("Number of States")
     ax_main.set_title(
-        "A  —  Energy Coverage: States Assigned per Bootstrap Generation",
+        "CO₂ Pipeline — Energy Coverage Across Bootstrap Generations",
         loc="left", fontweight="bold", fontsize=12,
     )
     ax_main.legend(loc="upper left", fontsize=10)
     ax_main.grid(axis="y", linestyle="--", alpha=0.4)
-
-    # ── Panel B: ML fraction per energy bin ───────────────────────────────────
-    if has_pred:
-        ml_mask = (~df["is_marvel"]) & (df["pred_class_id"] >= 0)
-        total_counts, _ = np.histogram(df.loc[marvel_mask | ml_mask, "energy"], bins=bins)
-        ml_counts, _ = np.histogram(df.loc[ml_mask, "energy"], bins=bins)
-    else:
-        total_counts, _ = np.histogram(df.loc[marvel_mask, "energy"], bins=bins)
-        ml_counts = np.zeros_like(total_counts)
-
-    with np.errstate(invalid="ignore", divide="ignore"):
-        ml_fraction = np.where(total_counts > 0, ml_counts / total_counts * 100, 0)
-
-    ax_cumul.bar(
-        bins[:-1], ml_fraction, width=bin_size, color="#3498db",
-        alpha=0.75, align="edge", edgecolor="none", label="ML-assigned fraction of bin",
-    )
-    ax_cumul.axhline(
-        50, color="#e74c3c", linestyle="--", linewidth=1.5, label="50% ML coverage"
-    )
-    ax_cumul.set_xlabel("Energy (cm⁻¹)")
-    ax_cumul.set_ylabel("ML-Assigned (%)")
-    ax_cumul.set_title(
-        "B  —  Fraction of Each Energy Bin Assigned by ML (vs. MARVEL)",
-        loc="left", fontweight="bold", fontsize=12,
-    )
-    ax_cumul.set_ylim(0, 105)
-    ax_cumul.legend(loc="upper left", fontsize=10)
-    ax_cumul.grid(axis="y", linestyle="--", alpha=0.4)
-
-    fig.suptitle(
-        "CO₂ Pipeline — Energy Coverage Across Bootstrap Generations",
-        fontsize=14, fontweight="bold",
-    )
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -703,11 +675,16 @@ def plot_variance_validation(df, PLOT_DIR="data/figures"):
 def plot_confidence_validation_final(df_preds, save_path):
     """
     Final publishable version of the confidence validation figure.
-    Uses assigned_margin (post-Hungarian) and post-Hungarian 4-QN labels.
 
-    Panel A: Normalised density — correct vs. incorrect predictions
-    Panel B: Precision–Retention trade-off curve
+    Panel A: Normalised density of assigned_prob — correct vs. incorrect predictions.
+             Threshold line at PROB_THRESHOLD (0.6, Youden-optimal for assigned_prob).
+    Panel B: Precision–Retention trade-off vs. assigned_margin threshold.
+             Threshold line at PAPER_MARGIN_THRESHOLD (1.5, removes visible bump of
+             incorrect predictions seen above T=1.0).
     """
+    PROB_THRESHOLD = 0.6
+    PAPER_MARGIN_THRESHOLD = 1.5
+
     print("Generating Final Confidence Validation Plot...")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
@@ -725,21 +702,18 @@ def plot_confidence_validation_final(df_preds, save_path):
     margin_col = (
         "assigned_margin" if "assigned_margin" in test_df.columns else "logit_margin"
     )
+    prob_col = "assigned_prob" if "assigned_prob" in test_df.columns else margin_col
+
     n_correct = is_correct.sum()
     n_incorrect = (~is_correct).sum()
     n_total = len(test_df)
 
-    fig, (ax1, ax2) = plt.subplots(
-        2,
-        1,
-        figsize=(10, 10),
-        gridspec_kw={"height_ratios": [2, 1]},
-    )
+    fig, ax1 = plt.subplots(figsize=(10, 6))
 
-    # ── Panel A: Normalised density ───────────────────────────────────────────
+    # ── Normalised density of assigned_prob ───────────────────────────────────
     sns.histplot(
         data=test_df,
-        x=margin_col,
+        x=prob_col,
         hue="Accuracy",
         hue_order=["Correct (4-QN)", "Incorrect (4-QN)"],
         palette={"Correct (4-QN)": "#2ecc71", "Incorrect (4-QN)": "#e74c3c"},
@@ -750,121 +724,23 @@ def plot_confidence_validation_final(df_preds, save_path):
         ax=ax1,
     )
 
-    threshold = HARVEST_THRESHOLD
-    ax1.axvline(
-        threshold,
+    threshold_line = ax1.axvline(
+        PROB_THRESHOLD,
         color="black",
         linestyle="--",
         linewidth=2,
-        label=f"Harvest threshold = {threshold}",
     )
 
-    ax1.text(
-        0.98,
-        0.97,
-        f"Correct:   {n_correct:,}\nIncorrect: {n_incorrect:,}\n"
-        f"Accuracy:  {n_correct/n_total*100:.1f}%",
-        transform=ax1.transAxes,
-        ha="right",
-        va="top",
-        fontsize=11,
-        bbox=dict(boxstyle="round,pad=0.4", fc="white", alpha=0.85),
-    )
-
-    ax1.set_xlabel("Assigned Logit Margin  (logit[assigned class] − logit[runner-up])")
+    ax1.set_xlabel("Assigned Softmax Probability")
     ax1.set_ylabel("Probability Density")
-    ax1.set_title(
-        "A  —  Assigned Logit Margin: Correct vs. Incorrect 4-QN Predictions\n"
-        "(Distributions normalised independently — shape comparison)",
-        loc="left",
-        fontweight="bold",
-        fontsize=11,
-    )
-    ax1.legend(title="Prediction", loc="upper center")
-    ax1.set_xlim(left=0)
+    ax1.set_xlim(0, 1)
     ax1.grid(axis="y", linestyle="--", alpha=0.5)
 
-    # ── Panel B: Precision–Retention curve ────────────────────────────────────
-    margins = test_df[margin_col].values
-    correct = is_correct.values
-    thresholds = np.linspace(0, np.percentile(margins, 99), 300)
-
-    precision_vals = []
-    retention_vals = []
-
-    for t in thresholds:
-        mask = margins >= t
-        retained = mask.sum()
-        if retained == 0:
-            break
-        precision_vals.append(correct[mask].mean() * 100)
-        retention_vals.append(retained / n_total * 100)
-
-    thresholds = thresholds[: len(precision_vals)]
-    precision_arr = np.array(precision_vals)
-    retention_arr = np.array(retention_vals)
-
-    c_prec = "#2980b9"
-    c_ret = "#8e44ad"
-
-    ax2.plot(
-        thresholds,
-        precision_arr,
-        color=c_prec,
-        linewidth=2,
-        label="Precision (% correct among retained)",
-    )
-    ax2.set_ylabel("Precision (%)", color=c_prec)
-    ax2.tick_params(axis="y", labelcolor=c_prec)
-    ax2.set_ylim(max(0, precision_arr.min() - 2), 101)
-
-    ax2b = ax2.twinx()
-    ax2b.plot(
-        thresholds,
-        retention_arr,
-        color=c_ret,
-        linewidth=2,
-        linestyle=":",
-        label="Retention (% of test set)",
-    )
-    ax2b.set_ylabel("Retention (%)", color=c_ret)
-    ax2b.tick_params(axis="y", labelcolor=c_ret)
-    ax2b.set_ylim(0, 105)
-
-    ax2.axvline(threshold, color="black", linestyle="--", linewidth=2)
-
-    # Operating point annotation
-    t_idx = np.searchsorted(thresholds, threshold)
-    if t_idx < len(precision_vals):
-        op_prec = precision_arr[t_idx]
-        op_ret = retention_arr[t_idx]
-        ax2.annotate(
-            f"T={threshold}: {op_prec:.1f}% precision\n{op_ret:.1f}% retained",
-            xy=(threshold, op_prec),
-            xytext=(threshold + 0.4, op_prec - 4),
-            fontsize=10,
-            arrowprops=dict(arrowstyle="->", color="black"),
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.85),
-        )
-
-    lines1, labels1 = ax2.get_legend_handles_labels()
-    lines2, labels2 = ax2b.get_legend_handles_labels()
-    ax2.legend(lines1 + lines2, labels1 + labels2, loc="lower left", fontsize=10)
-
-    ax2.set_xlabel("Assigned Logit Margin Threshold")
-    ax2.set_title(
-        "B  —  Precision–Retention Trade-off vs. Margin Threshold",
-        loc="left",
-        fontweight="bold",
-        fontsize=11,
-    )
-    ax2.grid(axis="y", linestyle="--", alpha=0.5)
-
-    fig.suptitle(
-        "CO₂ GNN — Confidence Calibration via Assigned Logit Margin",
-        fontsize=13,
-        fontweight="bold",
-    )
+    # Rebuild legend to include threshold line alongside seaborn hue entries
+    handles, labels = ax1.get_legend_handles_labels()
+    handles.append(threshold_line)
+    labels.append(f"Reporting threshold (p = {PROB_THRESHOLD})")
+    ax1.legend(handles=handles, labels=labels, title="Prediction", loc="upper left")
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
