@@ -42,7 +42,7 @@ def load_and_segment(path=PREDICTIONS_PATH):
     ].copy()
     lowconf = assigned[assigned["assigned_margin"] < HARVEST_THRESHOLD].copy()
 
-    return ca, unassigned, assigned, hc, harvest, lowconf
+    return df, ca, unassigned, assigned, hc, harvest, lowconf
 
 
 def print_overall_stats(ca, unassigned, assigned, hc, harvest, lowconf):
@@ -157,11 +157,16 @@ def print_bootstrap_consistency(assigned):
     print("  2. Retraining noise shifts per-state margins")
 
 
-def plot_isotopologue_breakdown(ca, figure_dir=FIGURES_DIR):
+def plot_isotopologue_breakdown(df, figure_dir=FIGURES_DIR):
+    """Stacked bar per isotopologue showing MARVEL + Ca assignment tiers."""
     print("\nGenerating per-isotopologue assignment breakdown figure...")
 
+    MARVEL_COLOR = "#d4a017"   # amber — matches plotting.py
+
     def get_tier(row):
-        if row["pred_class_id"] == -1:
+        if row["is_marvel"]:
+            return "MARVEL (Ground Truth)"
+        elif row["pred_class_id"] == -1:
             return "Unassigned"
         elif row["assigned_margin"] >= CONFIDENT_THRESHOLD:
             return f"Highly Confident (margin ≥ {CONFIDENT_THRESHOLD})"
@@ -170,24 +175,26 @@ def plot_isotopologue_breakdown(ca, figure_dir=FIGURES_DIR):
         else:
             return f"Low Confidence (< {HARVEST_THRESHOLD})"
 
-    ca = ca.copy()
-    ca["Tier"] = ca.apply(get_tier, axis=1)
+    df = df.copy()
+    df["Tier"] = df.apply(get_tier, axis=1)
 
     tier_order = [
+        "MARVEL (Ground Truth)",
         f"Highly Confident (margin ≥ {CONFIDENT_THRESHOLD})",
         f"Harvest Band ({HARVEST_THRESHOLD}–{CONFIDENT_THRESHOLD})",
         f"Low Confidence (< {HARVEST_THRESHOLD})",
         "Unassigned",
     ]
     tier_colors = {
-        tier_order[0]: "#35b779",   # green
-        tier_order[1]: "#6ece58",   # light green
-        tier_order[2]: "#31688e",   # blue
-        "Unassigned":  "#440154",   # purple
+        "MARVEL (Ground Truth)":                        MARVEL_COLOR,
+        tier_order[1]:                                  "#35b779",  # green
+        tier_order[2]:                                  "#6ece58",  # light green
+        tier_order[3]:                                  "#31688e",  # blue
+        "Unassigned":                                   "#440154",  # purple
     }
 
     counts = (
-        ca.groupby(["isotope_id", "Tier"]).size().unstack(fill_value=0)
+        df.groupby(["isotope_id", "Tier"]).size().unstack(fill_value=0)
     )
     for t in tier_order:
         if t not in counts.columns:
@@ -211,13 +218,13 @@ def plot_isotopologue_breakdown(ca, figure_dir=FIGURES_DIR):
         bottom += vals
 
     ax.set_xlabel("Isotopologue")
-    ax.set_ylabel("Number of Ca States")
+    ax.set_ylabel("Number of States")
     ax.grid(axis="y", linestyle="--", alpha=0.6)
     ax.legend(
         title="Assignment Tier",
         loc="upper center",
         bbox_to_anchor=(0.5, 1.18),
-        ncol=2,
+        ncol=3,
     )
     plt.xticks(rotation=45)
     plt.tight_layout()
@@ -344,7 +351,7 @@ def plot_unassigned_margin_distribution(unassigned, figure_dir=FIGURES_DIR):
 
 def main():
     print(f"Loading Ca predictions from {PREDICTIONS_PATH}...\n")
-    ca, unassigned, assigned, hc, harvest, lowconf = load_and_segment()
+    df, ca, unassigned, assigned, hc, harvest, lowconf = load_and_segment()
 
     print_overall_stats(ca, unassigned, assigned, hc, harvest, lowconf)
     print_unassigned_characterisation(unassigned)
@@ -384,7 +391,7 @@ Answer to Q2: Downstream scientific conclusions are unchanged. The previous
 The post-fix 45.6% rate represents the honest, physically valid coverage.
 """)
 
-    plot_isotopologue_breakdown(ca)
+    plot_isotopologue_breakdown(df)
     plot_energy_assignment_density(ca)
     plot_unassigned_margin_distribution(unassigned)
 

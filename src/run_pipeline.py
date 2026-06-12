@@ -60,7 +60,7 @@ def main():
 
         # Harvest confident predictions into the training set
         boot_result = subprocess.run(
-            ["uv", "run", "src/bootstrap.py"], capture_output=False
+            ["uv", "run", "src/bootstrap.py"], capture_output=True
         )
         if boot_result.returncode != 0:
             print(f"[ERROR] Bootstrap step failed on cycle {i}. Halting.")
