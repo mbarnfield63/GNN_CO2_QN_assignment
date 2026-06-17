@@ -263,7 +263,8 @@ def evaluate_physical_assignment(
         # states for class slots. Pre-assigning them removes their classes from
         # the pool before the solver runs.
         marvel_locked = group[
-            group["is_marvel"] & ~group["test_mask"]
+            group["is_marvel"]
+            & ~group["test_mask"]
             & group["combinatorial_class_id"].notna()
         ]
         locked_classes = set()
@@ -505,6 +506,7 @@ def main():
         model, inference_loader, device, num_total_nodes, df, mapping_df, scaler
     )
     plot_variance_validation(final_df)
+    export_run_metrics(final_df)
 
     end = time.time()
     print(f"\nTotal Execution Time: {(end - start) / 60:.2f} minutes")
