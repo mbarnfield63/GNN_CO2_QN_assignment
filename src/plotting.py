@@ -42,9 +42,9 @@ GEN_COLORS = {g: _GEN_VIRIDIS[g] for g in range(6)}
 # Color palette — viridis-inspired, but MARVEL uses amber (#d4a017) instead of
 # near-white yellow (#fde725) so it remains visible on white paper/slides.
 colors = {
-    LBL_MARVEL: "#d4a017",      # Amber (was #fde725 — invisible on white)
-    LBL_CONFIDENT: "#35b779",   # Green
-    LBL_CONSTRAINED: "#31688e", # Blue
+    LBL_MARVEL: "#d4a017",  # Amber (was #fde725 — invisible on white)
+    LBL_CONFIDENT: "#35b779",  # Green
+    LBL_CONSTRAINED: "#31688e",  # Blue
     LBL_UNASSIGNED: "#440154",  # Purple
 }
 
@@ -102,7 +102,11 @@ def plot_per_isotopologue(df, PLOT_DIR="data/figures"):
 
     # Put a legend below current axis
     ax.legend(
-        title="Assignment Type", loc="upper center", bbox_to_anchor=(0.5, 1.15), ncol=2
+        title="Assignment Type",
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.15),
+        ncol=2,
+        markerscale=2.0,
     )
 
     save_path = os.path.join(PLOT_DIR, "yield_per_isotopologue.png")
@@ -164,7 +168,7 @@ def plot_energy_distribution(df, bin_size=1000, PLOT_DIR="data/figures"):
             ::-1
         ]  # Reverse so Constrained is at the top of the legend box
     ]
-    ax.legend(handles=legend_handles, loc="best", title="Assignment Type")
+    ax.legend(handles=legend_handles, loc="best", fontsize=16)
 
     ax.grid(axis="y", linestyle="--", alpha=0.6)
     ax.set_xlim(left=0)
@@ -192,7 +196,7 @@ def plot_polyad_ladders(df, PLOT_DIR="data/figures"):
     confident = subset_df[subset_df["Assignment_Category"] == LBL_CONFIDENT]
     constrained = subset_df[subset_df["Assignment_Category"] == LBL_CONSTRAINED]
 
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(8, 8))
 
     # 1. ML Confident
     ax.scatter(
@@ -233,12 +237,13 @@ def plot_polyad_ladders(df, PLOT_DIR="data/figures"):
     ax.set_ylabel("Energy (cm$^{-1}$)")
 
     ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
-    ax.legend(loc="best")
+    ax.xaxis.set_minor_locator(plt.NullLocator())
+    ax.legend(loc="lower right", fontsize=12, markerscale=1.5)
     ax.grid(True, linestyle="--", alpha=0.4)
 
     plt.tight_layout()
     save_path = os.path.join(PLOT_DIR, "polyad_ladders.png")
-    plt.savefig(save_path)
+    plt.savefig(save_path, bbox_inches="tight")
     plt.close()
 
 
@@ -467,7 +472,9 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
 
     if has_pred:
         ca_gen0_mask = (
-            (~df["is_marvel"]) & (df["assignment_generation"] == 0) & (df["pred_class_id"] >= 0)
+            (~df["is_marvel"])
+            & (df["assignment_generation"] == 0)
+            & (df["pred_class_id"] >= 0)
         )
         # Hatched to signal "initial GNN inference, not yet bootstrapped"
         segments.append((ca_gen0_mask, "GNN Initial (Gen 0)", "#b5cf6b", "///"))
@@ -475,37 +482,50 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
         max_gen = int(df.loc[~df["is_marvel"], "assignment_generation"].max())
         for g in range(1, max_gen + 1):
             ca_gen_mask = (
-                (~df["is_marvel"]) & (df["assignment_generation"] == g) & (df["pred_class_id"] >= 0)
+                (~df["is_marvel"])
+                & (df["assignment_generation"] == g)
+                & (df["pred_class_id"] >= 0)
             )
-            segments.append((ca_gen_mask, f"Bootstrap Gen {g}", GEN_COLORS.get(g, GEN_COLORS[5]), None))
+            segments.append(
+                (
+                    ca_gen_mask,
+                    f"Bootstrap Gen {g}",
+                    GEN_COLORS.get(g, GEN_COLORS[5]),
+                    None,
+                )
+            )
 
         # Unassigned Ca on top — outside viridis scale
         unassigned_mask = (~df["is_marvel"]) & (df["pred_class_id"] < 0)
-        segments.append((unassigned_mask, "Unassigned Ca", UNASSIGNED_COLOR, None))
+        segments.append((unassigned_mask, "Unassigned", UNASSIGNED_COLOR, None))
     else:
         print("  Warning: pred_class_id not found; only MARVEL states will be shown.")
 
     bins = np.arange(0, 15001, bin_size)
 
-    fig, ax_main = plt.subplots(figsize=(13, 6))
+    fig, ax_main = plt.subplots(figsize=(10, 6))
 
     bottoms = np.zeros(len(bins) - 1)
     for mask, label, color, hatch in segments:
         counts, _ = np.histogram(df.loc[mask, "energy"], bins=bins)
         ec = "black" if hatch else "none"
         ax_main.bar(
-            bins[:-1], counts, width=bin_size, bottom=bottoms,
-            color=color, label=label, alpha=0.85, align="edge",
-            edgecolor=ec, linewidth=0.4, hatch=hatch,
+            bins[:-1],
+            counts,
+            width=bin_size,
+            bottom=bottoms,
+            color=color,
+            label=label,
+            alpha=0.85,
+            align="edge",
+            edgecolor=ec,
+            linewidth=0.4,
+            hatch=hatch,
         )
         bottoms += counts
 
     ax_main.set_xlabel("Energy (cm⁻¹)")
     ax_main.set_ylabel("Number of States")
-    ax_main.set_title(
-        "CO₂ Pipeline — Energy Coverage Across Bootstrap Generations",
-        loc="left", fontweight="bold", fontsize=12,
-    )
     ax_main.legend(loc="upper left", fontsize=10)
     ax_main.grid(axis="y", linestyle="--", alpha=0.4)
 
@@ -515,159 +535,44 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     print(f"Saved: {save_path}")
 
 
-def plot_variance_validation(df, PLOT_DIR="data/figures"):
+def plot_assignment_rate_by_energy(df, PLOT_DIR="data/figures"):
     """
-    Validates the logit margin as a confidence proxy.
-    Panel A: Normalised density distributions (correct vs incorrect).
-    Panel B: Precision curve — fraction correct as a function of margin threshold.
+    Cumulative Ca assignment rate vs. energy, one line per bootstrap generation.
+    Each line shows the fraction of Ca states assigned up to and including that generation.
     """
-    print("Generating Confidence Validation Plot on Ground Truth Test Set...")
+    print("Generating Assignment Rate vs Energy Plot...")
 
-    test_df = df[df["test_mask"]].copy()
+    ca_df = df[~df["is_marvel"]].copy()
 
-    # --- Grade against POST-Hungarian assignments (consistent with reported MAE) ---
-    is_correct = (
-        (test_df["AFGL_m1"] == test_df["pred_m1"])
-        & (test_df["AFGL_m2"] == test_df["pred_m2"])
-        & (test_df["AFGL_m3"] == test_df["pred_m3"])
-        & (test_df["AFGL_r"] == test_df["pred_r"])
-    )
-    test_df["Accuracy"] = np.where(is_correct, "Correct (4-QN)", "Incorrect (4-QN)")
+    bin_size = 1000
+    bins = np.arange(0, 15001, bin_size)
+    bin_mids = (bins[:-1] + bins[1:]) / 2
 
-    # Use assigned_margin (post-Hungarian) if available, fall back to logit_margin
-    margin_col = (
-        "assigned_margin" if "assigned_margin" in test_df.columns else "logit_margin"
-    )
-    n_correct = is_correct.sum()
-    n_incorrect = (~is_correct).sum()
-    n_total = len(test_df)
+    total_per_bin, _ = np.histogram(ca_df["energy"], bins=bins)
 
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(10, 10), gridspec_kw={"height_ratios": [2, 1]}
-    )
+    assigned_ca = ca_df[ca_df["pred_class_id"] != -1]
+    max_gen = int(assigned_ca["assignment_generation"].max()) if not assigned_ca.empty else 0
 
-    # ── Panel A: Normalised density ──────────────────────────────────────────
-    sns.histplot(
-        data=test_df,
-        x=margin_col,
-        hue="Accuracy",
-        hue_order=["Correct (4-QN)", "Incorrect (4-QN)"],
-        palette={"Correct (4-QN)": "#2ecc71", "Incorrect (4-QN)": "#e74c3c"},
-        bins=60,
-        stat="density",  # <-- normalise each distribution independently
-        common_norm=False,  # <-- critical: each hue normalised to its own area
-        alpha=0.6,
-        ax=ax1,
-    )
+    fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
-    threshold = HARVEST_THRESHOLD
-    ax1.axvline(
-        threshold,
-        color="black",
-        linestyle="--",
-        linewidth=2,
-        label=f"Harvest threshold = {threshold}",
-    )
+    for g in range(max_gen + 1):
+        cumulative_mask = (ca_df["pred_class_id"] != -1) & (ca_df["assignment_generation"] <= g)
+        assigned_per_bin, _ = np.histogram(ca_df.loc[cumulative_mask, "energy"], bins=bins)
+        rate = np.where(total_per_bin > 0, assigned_per_bin / total_per_bin * 100, np.nan)
+        label = "Gen 0 (initial)" if g == 0 else f"Gen {g}"
+        ax.plot(bin_mids, rate, color=GEN_COLORS.get(g, GEN_COLORS[5]), linewidth=2, label=label)
 
-    # Annotate counts so the reader understands the class ratio
-    ax1.text(
-        0.98,
-        0.96,
-        f"Correct: {n_correct:,}  |  Incorrect: {n_incorrect:,}\n"
-        f"Overall accuracy: {n_correct/n_total*100:.1f}%",
-        transform=ax1.transAxes,
-        ha="right",
-        va="top",
-        fontsize=11,
-        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
-    )
-
-    ax1.set_xlabel("")
-    ax1.set_ylabel("Probability Density")
-    ax1.set_title(
-        "Logit Margin Distribution: Correct vs. Incorrect 4-QN Predictions\n"
-        "(Normalised independently — shape comparison, not count comparison)"
-    )
-    ax1.legend(title="Prediction")
-    ax1.set_xlim(left=0)
-    ax1.grid(axis="y", linestyle="--", alpha=0.5)
-
-    # ── Panel B: Precision curve ─────────────────────────────────────────────
-    # For each threshold T: among all nodes with margin >= T, what fraction correct?
-    margins = test_df[margin_col].values
-    correct = is_correct.values
-
-    thresholds = np.linspace(0, margins.max() * 0.95, 200)
-    precision_vals = []
-    retention_vals = []
-
-    for t in thresholds:
-        mask = margins >= t
-        retained = mask.sum()
-        if retained == 0:
-            break
-        precision_vals.append(correct[mask].mean())
-        retention_vals.append(retained / n_total)
-
-    thresholds = thresholds[: len(precision_vals)]
-    precision_vals = np.array(precision_vals)
-    retention_vals = np.array(retention_vals)
-
-    color_prec = "#2980b9"
-    color_ret = "#8e44ad"
-
-    ax2.plot(
-        thresholds,
-        precision_vals * 100,
-        color=color_prec,
-        linewidth=2,
-        label="Precision (% correct among retained)",
-    )
-    ax2.set_ylabel("Precision (%)", color=color_prec)
-    ax2.tick_params(axis="y", labelcolor=color_prec)
-    ax2.set_ylim(bottom=max(0, precision_vals.min() * 100 - 2), top=101)
-
-    ax2b = ax2.twinx()
-    ax2b.plot(
-        thresholds,
-        retention_vals * 100,
-        color=color_ret,
-        linewidth=2,
-        linestyle=":",
-        label="Retention (% of test set)",
-    )
-    ax2b.set_ylabel("Retention (%)", color=color_ret)
-    ax2b.tick_params(axis="y", labelcolor=color_ret)
-    ax2b.set_ylim(0, 105)
-
-    ax2.axvline(threshold, color="black", linestyle="--", linewidth=2)
-
-    # Annotate the operating point
-    t_idx = np.searchsorted(thresholds, threshold)
-    if t_idx < len(precision_vals):
-        op_prec = precision_vals[t_idx] * 100
-        op_ret = retention_vals[t_idx] * 100
-        ax2.annotate(
-            f"T={threshold}: {op_prec:.1f}% precision\n{op_ret:.1f}% retained",
-            xy=(threshold, op_prec),
-            xytext=(threshold + 0.3, op_prec - 5),
-            fontsize=10,
-            arrowprops=dict(arrowstyle="->", color="black"),
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
-        )
-
-    lines1, labels1 = ax2.get_legend_handles_labels()
-    lines2, labels2 = ax2b.get_legend_handles_labels()
-    ax2.legend(lines1 + lines2, labels1 + labels2, loc="lower left", fontsize=10)
-
-    ax2.set_xlabel("Assigned Logit Margin Threshold")
-    ax2.set_title("Precision–Retention Trade-off vs. Margin Threshold")
-    ax2.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.set_xlabel("Energy (cm$^{-1}$)")
+    ax.set_ylabel("Cumulative Assignment Rate (%)")
+    ax.set_ylim(0, 105)
+    ax.set_xlim(left=0)
+    ax.legend(loc="best")
+    ax.grid(axis="y", linestyle="--", alpha=0.5)
 
     plt.tight_layout()
     os.makedirs(PLOT_DIR, exist_ok=True)
-    save_path = os.path.join(PLOT_DIR, "confidence_validation.png")
-    plt.savefig(save_path, dpi=300)
+    save_path = os.path.join(PLOT_DIR, "assignment_rate_by_energy.png")
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Plot saved to {save_path}")
 

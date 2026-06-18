@@ -8,7 +8,7 @@ from plotting import (
     plot_per_isotopologue,
     plot_energy_distribution,
     plot_polyad_ladders,
-    plot_variance_validation,
+    plot_assignment_rate_by_energy,
     HARVEST_THRESHOLD,
     LBL_MARVEL,
     LBL_CONFIDENT,
@@ -59,5 +59,5 @@ if __name__ == "__main__":
     plot_per_isotopologue(df)
     plot_energy_distribution(df, bin_size=1000)
     plot_polyad_ladders(df)
-    plot_variance_validation(df)
+    plot_assignment_rate_by_energy(df)
     print("All figures successfully saved.")

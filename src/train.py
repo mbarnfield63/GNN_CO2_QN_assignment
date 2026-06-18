@@ -13,7 +13,7 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 # Import custom modules
 from graph_builder import build_pyg_graph
 from model import CO2AssignmentGNN, FocalLoss
-from plotting import plot_variance_validation
+from plotting import plot_assignment_rate_by_energy
 
 DATA_DIR = "data"
 UNIFIED_DATASET_PATH = os.path.join(DATA_DIR, "unified_co2_graph_data.csv")
@@ -144,7 +144,17 @@ def decode_qn_cols(df, id_col, class_to_quantum, prefix):
         )
 
 
-def train_model(model, train_loader, device, epochs, criterion, optimizer, val_loader=None, print_every=10, n_train=None):
+def train_model(
+    model,
+    train_loader,
+    device,
+    epochs,
+    criterion,
+    optimizer,
+    val_loader=None,
+    print_every=10,
+    n_train=None,
+):
     """Run the training loop; logs val accuracy if val_loader and n_train are provided."""
     for epoch in range(1, epochs + 1):
         model.train()
@@ -161,7 +171,9 @@ def train_model(model, train_loader, device, epochs, criterion, optimizer, val_l
             if val_loader is not None and n_train is not None:
                 avg_loss = total_loss / n_train
                 val_acc = evaluate_batched(model, val_loader, device)
-                print(f"Epoch {epoch:03d} | Loss: {avg_loss:.4f} | Val Top-1 Acc: {val_acc:.4f}")
+                print(
+                    f"Epoch {epoch:03d} | Loss: {avg_loss:.4f} | Val Top-1 Acc: {val_acc:.4f}"
+                )
             else:
                 print(f"Epoch {epoch:03d} complete.")
 
@@ -276,7 +288,9 @@ def evaluate_physical_assignment(
         valid_class_ids = polyad_to_class_ids.get(polyad_val, [])
         idx_all = group.index.values
         n_unique = len(np.unique(raw_class_indices[idx_all]))
-        block_size_counts.append((len(group), len(valid_class_ids), len(group) - n_unique))
+        block_size_counts.append(
+            (len(group), len(valid_class_ids), len(group) - n_unique)
+        )
         if not valid_class_ids:
             continue
 
@@ -386,8 +400,7 @@ def evaluate_physical_assignment(
     df["hungarian_conflict"] = df["raw_class_id"] != df["pred_class_id"]
     conflict_df = df[df["hungarian_conflict"]]
     correct_after_conflict = (
-        (conflict_df["AFGL_m1"] == conflict_df["pred_m1"])
-        & conflict_df["is_marvel"]
+        (conflict_df["AFGL_m1"] == conflict_df["pred_m1"]) & conflict_df["is_marvel"]
     ).sum() / (conflict_df["is_marvel"].sum() + 1e-9)
     print(
         f"\nHungarian Algorithm caused class changes for {df['hungarian_conflict'].sum()} nodes."
@@ -460,8 +473,14 @@ def main():
 
     print("Training Deep Residual GNN via Mini-Batches...")
     train_model(
-        model, train_loader, device, epochs=100, criterion=criterion,
-        optimizer=optimizer, val_loader=val_loader, print_every=10,
+        model,
+        train_loader,
+        device,
+        epochs=100,
+        criterion=criterion,
+        optimizer=optimizer,
+        val_loader=val_loader,
+        print_every=10,
         n_train=data.train_mask.sum().item(),
     )
 
@@ -482,7 +501,7 @@ def main():
     final_df = evaluate_physical_assignment(
         model, inference_loader, device, num_total_nodes, df, mapping_df, scaler
     )
-    plot_variance_validation(final_df)
+    plot_assignment_rate_by_energy(final_df)
     export_run_metrics(final_df)
 
     end = time.time()

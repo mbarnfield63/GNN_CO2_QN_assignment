@@ -17,7 +17,7 @@ Outputs
 -------
   data/spectroscopic_constants_marvel.csv
   data/spectroscopic_constants_gnn.csv
-  data/figures/spec_const_626_scatter.png
+  data/figures/spec_const_bv_scatter.png
   data/figures/spec_const_mae_by_isotopologue.png
   data/figures/spec_const_delta_bv.png
 """
@@ -402,11 +402,11 @@ def plot_bv_spread_by_isotopologue(df_marvel, df_gnn, save_path):
         )
         ax.text(
             out_xi + 0.06,
-            out_bv + 0.0008,
-            r"$(3,1,1,2)_f$",
+            out_bv - 0.0008,
+            r"$(3,1^{1},2)f$",
             color="red",
-            fontsize=7,
-            va="bottom",
+            fontsize=plt.rcParams["legend.fontsize"],
+            va="top",
         )
 
     ax.set_xticks(range(len(iso_order)))
