@@ -3,6 +3,13 @@ import os
 # External path to the CO2 Dozen .states files
 STATES_DIR = os.path.abspath(r"C:\Code\Work\raw_data_store\Triatomics\CO2")
 
+# Canonical data paths shared across src/ scripts
+DATA_DIR = "data"
+UNIFIED_DATASET_PATH = os.path.join(DATA_DIR, "unified_co2_graph_data.csv")
+CLASS_MAPPING_PATH = os.path.join(DATA_DIR, "class_mapping.csv")
+GRAPH_CACHE_PATH = os.path.join(DATA_DIR, "cached_pyg_graph.pt")
+PREDICTIONS_PATH = os.path.join(DATA_DIR, "assigned_co2_predictions.csv")
+
 # Define isotopes to loop through
 ISOTOPES = [
     # Symmetric isotopologues

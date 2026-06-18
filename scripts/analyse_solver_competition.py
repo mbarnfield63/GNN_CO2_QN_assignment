@@ -51,19 +51,6 @@ GEN_COLORS = {
 }
 
 
-def _classify_state(row):
-    if row["is_marvel"]:
-        if row["train_mask"]:
-            return "marvel_train"
-        if row["val_mask"]:
-            return "marvel_val"
-        return "marvel_test"
-    gen = int(row.get("assignment_generation", 0))
-    if gen == 0:
-        return "ca_unharvested"
-    return f"ca_gen_{gen}"
-
-
 def _load_data():
     if not os.path.exists(PREDICTIONS_PATH):
         raise FileNotFoundError(f"{PREDICTIONS_PATH} not found. Run train.py first.")
@@ -91,10 +78,21 @@ def _load_data():
         & (df["AFGL_r"] == df["pred_r"])
     )
 
-    # State type label
+    # State type label (vectorized)
     if "assignment_generation" not in df.columns:
         df["assignment_generation"] = 0
-    df["state_type"] = df.apply(_classify_state, axis=1)
+    gen = df["assignment_generation"].fillna(0).astype(int)
+    ca_gen_labels = "ca_gen_" + gen.astype(str)
+    df["state_type"] = np.select(
+        [
+            df["is_marvel"] & df["train_mask"],
+            df["is_marvel"] & df["val_mask"],
+            df["is_marvel"],
+            (~df["is_marvel"]) & (gen == 0),
+        ],
+        ["marvel_train", "marvel_val", "marvel_test", "ca_unharvested"],
+        default=ca_gen_labels,
+    )
 
     return df
 

@@ -1,11 +1,10 @@
 import pandas as pd
 import numpy as np
 import os
-import concurrent.futures
 from sklearn.model_selection import train_test_split
 
 # Import from your config file
-from config import STATES_DIR, ISOTOPES
+from config import STATES_DIR, ISOTOPES, UNIFIED_DATASET_PATH, CLASS_MAPPING_PATH
 
 # The original ExoMol .states columns
 EXOMOL_COLUMNS = [
@@ -34,8 +33,6 @@ EXOMOL_COLUMNS = [
     "E_Ca",
 ]
 
-UNIFIED_DATASET_PATH = "data/unified_co2_graph_data.csv"
-CLASS_MAPPING_PATH = "data/class_mapping.csv"
 ENERGY_CUTOFF = 15000.0
 
 
@@ -120,13 +117,8 @@ def create_unified_dataset():
     """Compiles all isotopes, generates combinatorial classes from MARVEL states, and creates masks."""
     print(f"Aggregating states with E <= {ENERGY_CUTOFF} cm⁻¹...")
 
-    # 1. Multi-process the file reading
-    dfs = []
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        results = executor.map(process_single_isotope, ISOTOPES)
-        for res_df in results:
-            if not res_df.empty:
-                dfs.append(res_df)
+    # 1. Read each isotopologue file serially
+    dfs = [df for iso in ISOTOPES if not (df := process_single_isotope(iso)).empty]
 
     if not dfs:
         raise ValueError("No data found. Check your STATES_DIR and ISOTOPES config.")
@@ -165,15 +157,14 @@ def create_unified_dataset():
     mapping_df.to_csv(CLASS_MAPPING_PATH, index=False)
     print(f"Saved class decoding map to {CLASS_MAPPING_PATH}")
 
-    # 4. Apply mapping to the full dataset
-    def assign_class(row):
-        if not row["is_marvel"]:
-            return -1  # Dummy label for inference nodes (Calculated data)
-
-        cls_str = f"{int(row['AFGL_m1'])}_{int(row['AFGL_m2'])}_{int(row['AFGL_m3'])}_{int(row['AFGL_r'])}"
-        return class_to_id.get(cls_str, -1)
-
-    full_df["combinatorial_class_id"] = full_df.apply(assign_class, axis=1)
+    # 4. Apply mapping to the full dataset (Ca rows have AFGL cols == -1 → no match → -1)
+    cls_str_col = (
+        full_df["AFGL_m1"].astype(int).astype(str) + "_"
+        + full_df["AFGL_m2"].astype(int).astype(str) + "_"
+        + full_df["AFGL_m3"].astype(int).astype(str) + "_"
+        + full_df["AFGL_r"].astype(int).astype(str)
+    )
+    full_df["combinatorial_class_id"] = cls_str_col.map(class_to_id).fillna(-1).astype(int)
 
     # 5. Create Stratified Masks for Transductive Learning
     marvel_idx = full_df[full_df["is_marvel"]].index

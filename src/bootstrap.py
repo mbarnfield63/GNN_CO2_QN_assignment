@@ -1,11 +1,9 @@
+import sys
 import pandas as pd
 import os
 import time
 
-DATA_DIR = "data"
-UNIFIED_DATASET_PATH = os.path.join(DATA_DIR, "unified_co2_graph_data.csv")
-PREDICTIONS_PATH = os.path.join(DATA_DIR, "assigned_co2_predictions.csv")
-CACHE_PATH = os.path.join(DATA_DIR, "cached_pyg_graph.pt")
+from config import UNIFIED_DATASET_PATH, PREDICTIONS_PATH, GRAPH_CACHE_PATH
 
 # ── Harvesting threshold ──────────────────────────────────────────────────────
 # Uses assigned_margin (post-Hungarian) rather than raw logit_margin.
@@ -62,8 +60,7 @@ def run_bootstrap():
     print(f"Harvesting {num_new_train:,} states for Generation {current_gen}...")
 
     # ── Update masks ─────────────────────────────────────────────────────────
-    node_set = set(confident_nodes)
-    mask = df_orig["node_id"].isin(node_set)
+    mask = df_orig["node_id"].isin(confident_nodes)
 
     df_orig.loc[mask, "train_mask"] = True
     df_orig.loc[mask, "val_mask"] = False
@@ -93,9 +90,9 @@ def run_bootstrap():
     df_orig.to_csv(UNIFIED_DATASET_PATH, index=False)
     print(f"\nUpdated {UNIFIED_DATASET_PATH}.")
 
-    if os.path.exists(CACHE_PATH):
-        os.remove(CACHE_PATH)
-        print(f"Deleted stale PyG cache: {CACHE_PATH}")
+    if os.path.exists(GRAPH_CACHE_PATH):
+        os.remove(GRAPH_CACHE_PATH)
+        print(f"Deleted stale PyG cache: {GRAPH_CACHE_PATH}")
 
     elapsed = time.time() - start_time
     print(f"Bootstrap runtime: {elapsed:.2f}s")
@@ -103,4 +100,5 @@ def run_bootstrap():
 
 
 if __name__ == "__main__":
-    run_bootstrap()
+    if not run_bootstrap():
+        sys.exit(2)

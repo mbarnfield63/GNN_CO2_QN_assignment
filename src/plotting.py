@@ -535,10 +535,16 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     print(f"Saved: {save_path}")
 
 
-def plot_assignment_rate_by_energy(df, PLOT_DIR="data/figures"):
+def plot_assignment_rate_by_energy(df, save_path="data/figures/assignment_rate_by_energy.png"):
     """
-    Cumulative Ca assignment rate vs. energy, one line per bootstrap generation.
-    Each line shows the fraction of Ca states assigned up to and including that generation.
+    Stacked area plot: Ca assignment rate vs energy, broken down by bootstrap generation.
+
+    Each band shows the INCREMENTAL contribution of states promoted to training in that
+    generation. Gen 0 (bottom, lightest) = Ca states assigned by the final model but
+    never promoted to training. Gen 1-5 bands stack on top. The black dashed ceiling
+    shows the total assignment rate, which is structurally fixed by MARVEL polyad coverage
+    and does not change between generations — bootstrap improves assignment confidence,
+    not count.
     """
     print("Generating Assignment Rate vs Energy Plot...")
 
@@ -550,28 +556,99 @@ def plot_assignment_rate_by_energy(df, PLOT_DIR="data/figures"):
 
     total_per_bin, _ = np.histogram(ca_df["energy"], bins=bins)
 
-    assigned_ca = ca_df[ca_df["pred_class_id"] != -1]
-    max_gen = int(assigned_ca["assignment_generation"].max()) if not assigned_ca.empty else 0
+    max_gen = int(ca_df["assignment_generation"].max()) if not ca_df.empty else 0
+
+    # Per-generation incremental counts (non-cumulative)
+    gen_rates = []
+    for g in range(max_gen + 1):
+        gen_mask = (ca_df["pred_class_id"] != -1) & (ca_df["assignment_generation"] == g)
+        gen_per_bin, _ = np.histogram(ca_df.loc[gen_mask, "energy"], bins=bins)
+        rate = np.where(total_per_bin > 0, gen_per_bin / total_per_bin * 100.0, 0.0)
+        gen_rates.append(rate)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
-    for g in range(max_gen + 1):
-        cumulative_mask = (ca_df["pred_class_id"] != -1) & (ca_df["assignment_generation"] <= g)
-        assigned_per_bin, _ = np.histogram(ca_df.loc[cumulative_mask, "energy"], bins=bins)
-        rate = np.where(total_per_bin > 0, assigned_per_bin / total_per_bin * 100, np.nan)
-        label = "Gen 0 (initial)" if g == 0 else f"Gen {g}"
-        ax.plot(bin_mids, rate, color=GEN_COLORS.get(g, GEN_COLORS[5]), linewidth=2, label=label)
+    bottom = np.zeros(len(bin_mids))
+    for g, rate in enumerate(gen_rates):
+        label = "Gen 0 (unbootstrapped)" if g == 0 else f"Gen {g}"
+        color = GEN_COLORS.get(g, GEN_COLORS[5])
+        ax.fill_between(bin_mids, bottom, bottom + rate, color=color, alpha=0.85, label=label)
+        bottom += rate
+
+    # Ceiling: total assigned (structurally fixed — does not change with bootstrapping)
+    total_assigned_mask = ca_df["pred_class_id"] != -1
+    total_assigned_per_bin, _ = np.histogram(ca_df.loc[total_assigned_mask, "energy"], bins=bins)
+    ceiling = np.where(total_per_bin > 0, total_assigned_per_bin / total_per_bin * 100.0, np.nan)
+    ax.plot(bin_mids, ceiling, color="black", linestyle="--", linewidth=1.5,
+            label="Total assigned (structural ceiling)")
 
     ax.set_xlabel("Energy (cm$^{-1}$)")
-    ax.set_ylabel("Cumulative Assignment Rate (%)")
+    ax.set_ylabel("Ca Assignment Rate (%)")
     ax.set_ylim(0, 105)
     ax.set_xlim(left=0)
-    ax.legend(loc="best")
-    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.legend(loc="best", fontsize=11)
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     plt.tight_layout()
-    os.makedirs(PLOT_DIR, exist_ok=True)
-    save_path = os.path.join(PLOT_DIR, "assignment_rate_by_energy.png")
+    os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else ".", exist_ok=True)
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Plot saved to {save_path}")
+
+
+def plot_bootstrap_margin_gain(df_preds, save_path="data/figures/bootstrap_margin_gain.png"):
+    """
+    Violin plot of assigned_margin by bootstrap cohort (assignment_generation).
+
+    Shows whether the final model assigns higher confidence to Ca states that
+    were promoted to training in earlier bootstrap cycles vs. states that were
+    never promoted (gen=0). Bootstrapping is worthwhile if:
+      (a) bootstrapped states (gen > 0) have materially higher margins than gen=0, AND
+      (b) the gen=0 margins also improve relative to a MARVEL-only baseline.
+
+    Note: bootstrapping does NOT increase the number of Ca states assigned — total
+    coverage is fixed by MARVEL polyad coverage. Its value is in confidence calibration.
+    """
+    print("Generating Bootstrap Margin Gain Plot...")
+
+    ca_df = df_preds[~df_preds["is_marvel"] & (df_preds["pred_class_id"] >= 0)].copy()
+    if ca_df.empty:
+        print("No assigned Ca states found — skipping.")
+        return
+
+    max_gen = int(ca_df["assignment_generation"].max())
+    gens = sorted(ca_df["assignment_generation"].unique())
+
+    fig, ax = plt.subplots(1, 1, figsize=(max(6, 2 * len(gens) + 2), 5))
+
+    positions = []
+    data_by_gen = []
+    labels = []
+    for g in gens:
+        subset = ca_df.loc[ca_df["assignment_generation"] == g, "assigned_margin"].values
+        data_by_gen.append(subset)
+        positions.append(g)
+        labels.append("Gen 0\n(never\nbootstrapped)" if g == 0 else f"Gen {g}")
+
+    parts = ax.violinplot(data_by_gen, positions=positions, showmedians=True,
+                          showextrema=False, widths=0.7)
+
+    for i, (pc, g) in enumerate(zip(parts["bodies"], gens)):
+        pc.set_facecolor(GEN_COLORS.get(g, GEN_COLORS[5]))
+        pc.set_alpha(0.75)
+    parts["cmedians"].set_color("black")
+    parts["cmedians"].set_linewidth(2)
+
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, fontsize=11)
+    ax.set_xlabel("Bootstrap Cohort")
+    ax.set_ylabel("Assigned Logit Margin (final model)")
+    ax.axhline(1.0, color="red", linestyle=":", linewidth=1.5, label="Bootstrap threshold (1.0)")
+    ax.legend(loc="upper left")
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
+
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else ".", exist_ok=True)
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Plot saved to {save_path}")

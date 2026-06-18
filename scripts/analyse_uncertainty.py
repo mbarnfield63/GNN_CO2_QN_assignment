@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, roc_curve
 from scipy.stats import ks_2samp
 
 DATA_DIR = "data"
@@ -90,35 +90,21 @@ def _precision_retention(values, correct, n_total, higher_is_confident):
     """Sweep thresholds and return (thresholds, precision, retention) arrays."""
     lo, hi = np.percentile(values, 1), np.percentile(values, 99)
     thresholds = np.linspace(lo, hi, 300)
-    prec, ret = [], []
-    for t in thresholds:
-        mask = (values >= t) if higher_is_confident else (values <= t)
-        retained = mask.sum()
-        if retained == 0:
-            break
-        prec.append(correct[mask].mean() * 100)
-        ret.append(retained / n_total * 100)
-    return thresholds[: len(prec)], np.array(prec), np.array(ret)
+    masks = (values[None, :] >= thresholds[:, None]) if higher_is_confident else (values[None, :] <= thresholds[:, None])
+    counts = masks.sum(axis=1)
+    n_valid = int(np.argmax(counts == 0)) if (counts == 0).any() else len(thresholds)
+    thresholds, masks, counts = thresholds[:n_valid], masks[:n_valid], counts[:n_valid]
+    prec = (masks * correct[None, :]).sum(axis=1) / np.maximum(counts, 1) * 100
+    ret = counts / n_total * 100
+    return thresholds, prec, ret
 
 
 def _youden_threshold(values, correct, higher_is_confident):
     """Return the threshold maximising sensitivity + specificity - 1."""
-    lo, hi = values.min(), values.max()
-    thresholds = np.linspace(lo, hi, 500)
-    best_j, best_t = -1, lo
-    for t in thresholds:
-        pos = (values >= t) if higher_is_confident else (values <= t)
-        neg = ~pos
-        tp = (correct & pos).sum()
-        fn = (correct & neg).sum()
-        tn = (~correct & neg).sum()
-        fp = (~correct & pos).sum()
-        sens = tp / (tp + fn + 1e-9)
-        spec = tn / (tn + fp + 1e-9)
-        j = sens + spec - 1
-        if j > best_j:
-            best_j, best_t = j, t
-    return best_t
+    score = values if higher_is_confident else -values
+    fpr, tpr, thresholds = roc_curve(correct, score)
+    opt_score = thresholds[np.argmax(tpr - fpr)]
+    return opt_score if higher_is_confident else -opt_score
 
 
 def analyse(test_df):

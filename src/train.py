@@ -13,12 +13,8 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 # Import custom modules
 from graph_builder import build_pyg_graph
 from model import CO2AssignmentGNN, FocalLoss
-from plotting import plot_assignment_rate_by_energy
 
-DATA_DIR = "data"
-UNIFIED_DATASET_PATH = os.path.join(DATA_DIR, "unified_co2_graph_data.csv")
-CLASS_MAPPING_PATH = os.path.join(DATA_DIR, "class_mapping.csv")
-GRAPH_CACHE_PATH = os.path.join(DATA_DIR, "cached_pyg_graph.pt")
+from config import DATA_DIR, UNIFIED_DATASET_PATH, CLASS_MAPPING_PATH, GRAPH_CACHE_PATH, PREDICTIONS_PATH
 
 FEATURE_COLS = [
     "energy",
@@ -80,7 +76,26 @@ def export_run_metrics(final_df, data_dir="data"):
     current_gen = int(final_df["assignment_generation"].max())
     n_assigned = int((final_df["pred_class_id"] >= 0).sum())
     n_total = len(final_df)
-    n_harvested = int((final_df["assignment_generation"] == current_gen).sum())
+
+    # Count only Ca states promoted in the most recent bootstrap cycle.
+    # When current_gen == 0, no bootstrap has run yet so the count is zero.
+    # (Without the guard, assignment_generation == 0 matches all MARVEL + Ca states.)
+    if current_gen == 0:
+        n_harvested = 0
+    else:
+        n_harvested = int(
+            ((~final_df["is_marvel"]) & (final_df["assignment_generation"] == current_gen)).sum()
+        )
+
+    # Median assigned_margin over all Ca states assigned in this run (pred_class_id >= 0).
+    # This is the post-solver logit margin and reflects current model confidence uniformly
+    # across generations, unlike locked_margin which only exists for bootstrapped states.
+    assigned_ca_mask = (~final_df["is_marvel"]) & (final_df["pred_class_id"] >= 0)
+    median_margin = (
+        float(final_df.loc[assigned_ca_mask, "assigned_margin"].median())
+        if assigned_ca_mask.any()
+        else 0.0
+    )
 
     metrics = {
         "generation": current_gen,
@@ -111,15 +126,7 @@ def export_run_metrics(final_df, data_dir="data"):
             if final_df["hungarian_conflict"].any()
             else 0.0
         ),
-        "median_margin": (
-            float(
-                final_df.loc[
-                    final_df["assignment_generation"] == current_gen, "locked_margin"
-                ].median()
-            )
-            if current_gen > 0
-            else 0.0
-        ),
+        "median_margin": median_margin,
     }
 
     out_path = os.path.join(data_dir, "run_metrics.json")
@@ -418,7 +425,7 @@ def evaluate_physical_assignment(
     )
     print(f"Assignment rate: {(optimal_class_indices >= 0).sum() / len(df) * 100:.1f}%")
 
-    output_path = os.path.join(DATA_DIR, "assigned_co2_predictions.csv")
+    output_path = PREDICTIONS_PATH
     df.to_csv(output_path, index=False)
     print(f"Saved final assignments to {output_path}")
 
@@ -446,30 +453,10 @@ def main():
     criterion = FocalLoss(gamma=2.0)
 
     print("\nInitializing GPU Mini-Batching (NeighborLoader)...")
-    # Sample 10 neighbors per node, traversing 4 layers deep
-    train_loader = NeighborLoader(
-        data,
-        num_neighbors=[15, 10],
-        batch_size=2048,
-        input_nodes=data.train_mask,
-        shuffle=True,
-    )
-
-    val_loader = NeighborLoader(
-        data,
-        num_neighbors=[15, 10],
-        batch_size=2048,
-        input_nodes=data.val_mask,
-        shuffle=False,
-    )
-
-    test_loader = NeighborLoader(
-        data,
-        num_neighbors=[15, 10],
-        batch_size=2048,
-        input_nodes=data.test_mask,
-        shuffle=False,
-    )
+    loader_kw = dict(data=data, num_neighbors=[15, 10], batch_size=2048)
+    train_loader = NeighborLoader(**loader_kw, input_nodes=data.train_mask, shuffle=True)
+    val_loader = NeighborLoader(**loader_kw, input_nodes=data.val_mask, shuffle=False)
+    test_loader = NeighborLoader(**loader_kw, input_nodes=data.test_mask, shuffle=False)
 
     print("Training Deep Residual GNN via Mini-Batches...")
     train_model(
@@ -489,19 +476,12 @@ def main():
 
     print("\nPreparing for global inference (Mini-Batched)...")
 
-    # A loader with input_nodes=None automatically iterates over every single node in the graph safely
-    inference_loader = NeighborLoader(
-        data,
-        num_neighbors=[15, 10],
-        batch_size=2048,
-        shuffle=False,
-    )
+    inference_loader = NeighborLoader(**loader_kw, shuffle=False)
 
     num_total_nodes = data.x.shape[0]
     final_df = evaluate_physical_assignment(
         model, inference_loader, device, num_total_nodes, df, mapping_df, scaler
     )
-    plot_assignment_rate_by_energy(final_df)
     export_run_metrics(final_df)
 
     end = time.time()
