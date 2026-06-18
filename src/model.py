@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import SAGEConv
+from tqdm import tqdm
 
 
 class CO2AssignmentGNN(nn.Module):
@@ -14,7 +15,7 @@ class CO2AssignmentGNN(nn.Module):
         embed_dim=8,
         dropout_rate=0.3,
     ):
-        super(CO2AssignmentGNN, self).__init__()
+        super().__init__()
         self.dropout_rate = dropout_rate
 
         # Structural embedding for isotope context
@@ -80,8 +81,6 @@ class CO2AssignmentGNN(nn.Module):
         mean_entropy = torch.zeros(num_nodes, dtype=torch.float32, device="cpu")
 
         with torch.no_grad():
-            from tqdm import tqdm
-
             for batch in tqdm(loader, desc="MC Dropout Inference (Batched)"):
                 batch = batch.to(device)
 
@@ -131,8 +130,6 @@ class CO2AssignmentGNN(nn.Module):
         )
 
         with torch.no_grad():
-            from tqdm import tqdm
-
             for batch in tqdm(loader, desc="Extracting Logits"):
                 batch = batch.to(device)
                 logits = self.forward(batch.x, batch.edge_index, batch.iso_idx)
@@ -147,7 +144,7 @@ class CO2AssignmentGNN(nn.Module):
 
 class FocalLoss(nn.Module):
     def __init__(self, gamma=2.0):
-        super(FocalLoss, self).__init__()
+        super().__init__()
         self.gamma = gamma
 
     def forward(self, inputs, targets):

@@ -47,7 +47,7 @@ def load_and_prepare_data():
     num_classes = len(mapping_df)
 
     scaler = StandardScaler()
-    train_df = df[df["train_mask"] == True]
+    train_df = df[df["train_mask"]]
     scaler.fit(train_df[FEATURE_COLS])
     df["polyad_int"] = df["polyad"].copy()
     df[FEATURE_COLS] = scaler.transform(df[FEATURE_COLS])
@@ -68,7 +68,7 @@ def export_run_metrics(final_df, data_dir="data"):
     Writes key metrics from this training run to a JSON file so
     run_pipeline.py can accumulate them across bootstrap generations.
     """
-    test_df = final_df[final_df["test_mask"] == True]
+    test_df = final_df[final_df["test_mask"]]
 
     is_correct = (
         (test_df["AFGL_m1"] == test_df["pred_m1"])
@@ -135,6 +135,37 @@ def export_run_metrics(final_df, data_dir="data"):
     return metrics
 
 
+def decode_qn_cols(df, id_col, class_to_quantum, prefix):
+    """Map a class-ID column to 4 per-QN columns (m1, m2, m3, r)."""
+    _default = {"m1": -1, "m2": -1, "m3": -1, "r": -1}
+    for qn in ("m1", "m2", "m3", "r"):
+        df[f"{prefix}_{qn}"] = df[id_col].map(
+            lambda cid, q=qn: class_to_quantum.get(cid, _default)[q]
+        )
+
+
+def train_model(model, train_loader, device, epochs, criterion, optimizer, val_loader=None, print_every=10, n_train=None):
+    """Run the training loop; logs val accuracy if val_loader and n_train are provided."""
+    for epoch in range(1, epochs + 1):
+        model.train()
+        total_loss = 0
+        for batch in train_loader:
+            batch = batch.to(device)
+            optimizer.zero_grad()
+            out = model(batch.x, batch.edge_index, batch.iso_idx)
+            loss = criterion(out[: batch.batch_size], batch.y[: batch.batch_size])
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * batch.batch_size
+        if epoch % print_every == 0 or epoch == 1:
+            if val_loader is not None and n_train is not None:
+                avg_loss = total_loss / n_train
+                val_acc = evaluate_batched(model, val_loader, device)
+                print(f"Epoch {epoch:03d} | Loss: {avg_loss:.4f} | Val Top-1 Acc: {val_acc:.4f}")
+            else:
+                print(f"Epoch {epoch:03d} complete.")
+
+
 def evaluate_batched(model, loader, device):
     """Calculates Top-1 Accuracy using mini-batches."""
     model.eval()
@@ -161,7 +192,7 @@ def build_polyad_class_map(df, margin_threshold=0.0):
     by high-confidence bootstrapped predictions for sparse high-energy polyads.
     """
     # Seed from MARVEL ground truth (always authoritative)
-    marvel_states = df[df["is_marvel"] == True][
+    marvel_states = df[df["is_marvel"]][
         ["combinatorial_class_id", "polyad_int"]
     ].dropna()
 
@@ -222,18 +253,7 @@ def evaluate_physical_assignment(
         ["m1", "m2", "m3", "r"]
     ].to_dict("index")
 
-    df["raw_m1"] = df["raw_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m1": -1})["m1"]
-    )
-    df["raw_m2"] = df["raw_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m2": -1})["m2"]
-    )
-    df["raw_m3"] = df["raw_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m3": -1})["m3"]
-    )
-    df["raw_r"] = df["raw_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"r": -1})["r"]
-    )
+    decode_qn_cols(df, "raw_class_id", class_to_quantum, "raw")
 
     polyad_to_class_ids = build_polyad_class_map(df, margin_threshold=2.0)
     print(
@@ -246,6 +266,7 @@ def evaluate_physical_assignment(
     print("  MARVEL train/val states are pre-locked to ground-truth classes;")
     print("  solver runs only on Ca + MARVEL test states with remaining class slots.")
     optimal_class_indices = np.full(len(df), -1, dtype=int)
+    block_size_counts = []
 
     grouped = df.groupby(["isotope_id", "J", "parity_encoded", "polyad_int"])
 
@@ -253,6 +274,9 @@ def evaluate_physical_assignment(
         grouped, desc="Assigning Quantum States"
     ):
         valid_class_ids = polyad_to_class_ids.get(polyad_val, [])
+        idx_all = group.index.values
+        n_unique = len(np.unique(raw_class_indices[idx_all]))
+        block_size_counts.append((len(group), len(valid_class_ids), len(group) - n_unique))
         if not valid_class_ids:
             continue
 
@@ -315,24 +339,6 @@ def evaluate_physical_assignment(
     _eps = 1e-12
     df["entropy"] = -(mean_probs_cpu * np.log(mean_probs_cpu + _eps)).sum(axis=1)
 
-    # --- Conflict root cause diagnostic ---
-    duplicate_counts = []
-    block_size_counts = []
-
-    for (iso_id, J_val, parity_val, polyad_val), group in df.groupby(
-        ["isotope_id", "J", "parity_encoded", "polyad_int"]
-    ):
-        idx = group.index.values
-        top1_preds = raw_class_indices[idx]
-        n_states = len(idx)
-        n_unique_preds = len(np.unique(top1_preds))
-        valid_class_ids = polyad_to_class_ids.get(polyad_val, [])
-        n_valid = len(valid_class_ids)
-
-        duplicates = n_states - n_unique_preds
-        duplicate_counts.append(duplicates)
-        block_size_counts.append((n_states, n_valid, duplicates))
-
     block_df = pd.DataFrame(
         block_size_counts, columns=["n_states", "n_valid_classes", "n_duplicates"]
     )
@@ -351,20 +357,9 @@ def evaluate_physical_assignment(
 
     print("Decoding final combinatorial classes...")
     df["pred_class_id"] = optimal_class_indices
-    df["pred_m1"] = df["pred_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m1": -1})["m1"]
-    )
-    df["pred_m2"] = df["pred_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m2": -1})["m2"]
-    )
-    df["pred_m3"] = df["pred_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m3": -1})["m3"]
-    )
-    df["pred_r"] = df["pred_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"r": -1})["r"]
-    )
+    decode_qn_cols(df, "pred_class_id", class_to_quantum, "pred")
 
-    test_df = df[df["test_mask"] == True]
+    test_df = df[df["test_mask"]]
     if not test_df.empty:
         mae_m1 = abs(test_df["AFGL_m1"] - test_df["pred_m1"]).mean()
         mae_m2 = abs(test_df["AFGL_m2"] - test_df["pred_m2"]).mean()
@@ -389,10 +384,10 @@ def evaluate_physical_assignment(
 
     # --- Conflict diagnostic ---
     df["hungarian_conflict"] = df["raw_class_id"] != df["pred_class_id"]
-    conflict_df = df[df["hungarian_conflict"] == True]
+    conflict_df = df[df["hungarian_conflict"]]
     correct_after_conflict = (
         (conflict_df["AFGL_m1"] == conflict_df["pred_m1"])
-        & (conflict_df["is_marvel"] == True)
+        & conflict_df["is_marvel"]
     ).sum() / (conflict_df["is_marvel"].sum() + 1e-9)
     print(
         f"\nHungarian Algorithm caused class changes for {df['hungarian_conflict'].sum()} nodes."
@@ -464,29 +459,11 @@ def main():
     )
 
     print("Training Deep Residual GNN via Mini-Batches...")
-    epochs = 100
-
-    for epoch in range(1, epochs + 1):
-        model.train()
-        total_loss = 0
-
-        for batch in train_loader:
-            batch = batch.to(device)
-            optimizer.zero_grad()
-
-            out = model(batch.x, batch.edge_index, batch.iso_idx)
-            loss = criterion(out[: batch.batch_size], batch.y[: batch.batch_size])
-
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item() * batch.batch_size
-
-        if epoch % 10 == 0 or epoch == 1:
-            avg_loss = total_loss / data.train_mask.sum().item()
-            val_acc = evaluate_batched(model, val_loader, device)
-            print(
-                f"Epoch {epoch:03d} | Loss: {avg_loss:.4f} | Val Top-1 Acc: {val_acc:.4f}"
-            )
+    train_model(
+        model, train_loader, device, epochs=100, criterion=criterion,
+        optimizer=optimizer, val_loader=val_loader, print_every=10,
+        n_train=data.train_mask.sum().item(),
+    )
 
     test_acc = evaluate_batched(model, test_loader, device)
     print(f"\nTraining Complete. Base Test Top-1 Acc: {test_acc:.4f}")

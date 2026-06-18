@@ -72,7 +72,7 @@ def _load_data():
     # Build AFGL_class_id by joining class_mapping on (m1, m2, m3, r)
     mapping = pd.read_csv(CLASS_MAPPING_PATH)
     mapping_lookup = mapping.set_index(["m1", "m2", "m3", "r"])["class_id"]
-    marvel_mask = df["is_marvel"] == True
+    marvel_mask = df["is_marvel"]
     afgl_keys = df.loc[marvel_mask, ["AFGL_m1", "AFGL_m2", "AFGL_m3", "AFGL_r"]]
     df.loc[marvel_mask, "AFGL_class_id"] = (
         afgl_keys.apply(lambda r: mapping_lookup.get((r.iloc[0], r.iloc[1], r.iloc[2], r.iloc[3]), -1), axis=1).values

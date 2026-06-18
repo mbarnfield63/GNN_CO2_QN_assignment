@@ -35,14 +35,14 @@ def load_and_categorize_data(path=FINAL_DATA_PATH):
         )
 
     conditions = [
-        (df["is_marvel"] == True),
-        (df["is_marvel"] == False)
+        df["is_marvel"],
+        ~df["is_marvel"]
         & (df["pred_class_id"] != -1)
         & (df["assigned_margin"] >= CONFIDENT_THRESHOLD),
-        (df["is_marvel"] == False)
+        ~df["is_marvel"]
         & (df["pred_class_id"] != -1)
         & (df["assigned_margin"] < CONFIDENT_THRESHOLD),
-        (df["is_marvel"] == False) & (df["pred_class_id"] == -1),
+        ~df["is_marvel"] & (df["pred_class_id"] == -1),
     ]
 
     choices = [LBL_MARVEL, LBL_CONFIDENT, LBL_CONSTRAINED, LBL_UNASSIGNED]

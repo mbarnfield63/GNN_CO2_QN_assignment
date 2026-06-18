@@ -226,8 +226,7 @@ dependencies = [
     { name = "torch-sparse", version = "0.6.18+pt28cu126", source = { registry = "https://data.pyg.org/whl/torch-2.8.0+cu126.html" }, marker = "(platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
     { name = "torch-spline-conv", version = "1.2.2", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and sys_platform == 'linux') or (platform_machine != 'AMD64' and sys_platform == 'win32') or (platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'win32') or (sys_platform != 'linux' and sys_platform != 'win32')" },
     { name = "torch-spline-conv", version = "1.2.2+pt28cu126", source = { registry = "https://data.pyg.org/whl/torch-2.8.0+cu126.html" }, marker = "(platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
-    { name = "torchaudio" },
-    { name = "torchvision" },
+    { name = "tqdm" },
 ]
 
 [package.metadata]
@@ -242,8 +241,7 @@ requires-dist = [
     { name = "torch-scatter" },
     { name = "torch-sparse" },
     { name = "torch-spline-conv" },
-    { name = "torchaudio", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cu126" },
-    { name = "torchvision", specifier = "==0.23.0", index = "https://download.pytorch.org/whl/cu126" },
+    { name = "tqdm", specifier = ">=4.67.3" },
 ]
 
 [[package]]
@@ -802,8 +800,8 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cu126/torch-2.8.0%2Bcu126-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:ce6e6a1f4803ad62d1fe51cec3fe5ca14bcd8bc7cace7b09d5590f8147fa16ad" },
-    { url = "https://download-r2.pytorch.org/whl/cu126/torch-2.8.0%2Bcu126-cp312-cp312-win_amd64.whl", hash = "sha256:f6c79eac0018f9d131479ee1b7a68edb030619a316bfbc69275043aa4f338e4c" },
+    { url = "https://download-r2.pytorch.org/whl/cu126/torch-2.8.0%2Bcu126-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:ce6e6a1f4803ad62d1fe51cec3fe5ca14bcd8bc7cace7b09d5590f8147fa16ad", upload-time = "2025-10-01T23:40:02Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu126/torch-2.8.0%2Bcu126-cp312-cp312-win_amd64.whl", hash = "sha256:f6c79eac0018f9d131479ee1b7a68edb030619a316bfbc69275043aa4f338e4c", upload-time = "2025-10-01T23:40:33Z" },
 ]
 
 [[package]]
@@ -928,32 +926,6 @@ resolution-markers = [
 wheels = [
     { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu126/torch_spline_conv-1.2.2%2Bpt28cu126-cp312-cp312-linux_x86_64.whl" },
     { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu126/torch_spline_conv-1.2.2%2Bpt28cu126-cp312-cp312-win_amd64.whl" },
-]
-
-[[package]]
-name = "torchaudio"
-version = "2.8.0+cu126"
-source = { registry = "https://download.pytorch.org/whl/cu126" }
-dependencies = [
-    { name = "torch" },
-]
-wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cu126/torchaudio-2.8.0%2Bcu126-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:29d91c915d877dfe4714082d188b7677e059dfd57d43a2d4ad33641a7ef53feb" },
-    { url = "https://download-r2.pytorch.org/whl/cu126/torchaudio-2.8.0%2Bcu126-cp312-cp312-win_amd64.whl", hash = "sha256:4098eadd03a8d283b229677d1e02114fcf6a8bc331941a08232499e43ae8a497" },
-]
-
-[[package]]
-name = "torchvision"
-version = "0.23.0+cu126"
-source = { registry = "https://download.pytorch.org/whl/cu126" }
-dependencies = [
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "torch" },
-]
-wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.23.0%2Bcu126-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:7351ffe7a49fe8ef391c5eef3fc4f6c1e6f15d0e25e83b41e9a07a23c201c57f" },
-    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.23.0%2Bcu126-cp312-cp312-win_amd64.whl", hash = "sha256:e59fc7405f2e0cfceefc2f867794900478871c2639d02779d55dc143657a7bbb" },
 ]
 
 [[package]]

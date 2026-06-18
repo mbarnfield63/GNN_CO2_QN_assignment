@@ -17,7 +17,7 @@ def analyze_new_assignments():
 
     # 1. Isolate the Inference States
     # We only care about states that were NOT originally MARVEL assigned
-    inference_df = df[df["is_marvel"] == False].copy()
+    inference_df = df[~df["is_marvel"]].copy()
 
     # 2. Drop failed assignments (if the Hungarian solver couldn't fit them)
     assigned_df = inference_df[inference_df["pred_class_id"] != -1].copy()

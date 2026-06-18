@@ -46,7 +46,7 @@ def run_bootstrap():
     #   3. Assigned margin >= threshold (filters conflicts automatically)
     #   4. Not yet harvested in a prior generation
     confident_mask = (
-        (df_preds["is_marvel"] == False)
+        ~df_preds["is_marvel"]
         & (df_preds["pred_class_id"] != -1)
         & (df_preds[margin_col] >= MARGIN_THRESHOLD)
         & (df_orig["assignment_generation"] == 0)

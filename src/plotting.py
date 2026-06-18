@@ -188,7 +188,7 @@ def plot_polyad_ladders(df, PLOT_DIR="data/figures"):
 
     subset_df = df[df["J"] == 2].copy()
 
-    marvel = subset_df[subset_df["is_marvel"] == True]
+    marvel = subset_df[subset_df["is_marvel"]]
     confident = subset_df[subset_df["Assignment_Category"] == LBL_CONFIDENT]
     constrained = subset_df[subset_df["Assignment_Category"] == LBL_CONSTRAINED]
 
@@ -456,7 +456,7 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
 
     df = df[df["energy"] <= 15000].copy()
 
-    marvel_mask = df["is_marvel"] == True
+    marvel_mask = df["is_marvel"]
     has_pred = "pred_class_id" in df.columns
 
     # Each segment: (mask, label, color, hatch)
@@ -523,7 +523,7 @@ def plot_variance_validation(df, PLOT_DIR="data/figures"):
     """
     print("Generating Confidence Validation Plot on Ground Truth Test Set...")
 
-    test_df = df[df["test_mask"] == True].copy()
+    test_df = df[df["test_mask"]].copy()
 
     # --- Grade against POST-Hungarian assignments (consistent with reported MAE) ---
     is_correct = (
@@ -688,7 +688,7 @@ def plot_confidence_validation_final(df_preds, save_path):
     print("Generating Final Confidence Validation Plot...")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
-    test_df = df_preds[df_preds["test_mask"] == True].copy()
+    test_df = df_preds[df_preds["test_mask"]].copy()
 
     # Grade against post-Hungarian assignments
     is_correct = (

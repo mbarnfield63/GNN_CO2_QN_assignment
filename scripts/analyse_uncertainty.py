@@ -47,7 +47,7 @@ def _load_test_df():
         )
 
     df = pd.read_csv(PREDICTIONS_PATH)
-    test_df = df[df["test_mask"] == True].copy()
+    test_df = df[df["test_mask"]].copy()
 
     # Merge MC-dropout signals from the relaxed CSV if available
     if os.path.exists(RELAXED_PATH):

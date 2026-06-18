@@ -1,21 +1,21 @@
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
+)
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch_geometric.loader import NeighborLoader
 import pandas as pd
 import numpy as np
-import os
 import time
 from tqdm import tqdm
 from scipy.optimize import linear_sum_assignment
 
-from train import load_and_prepare_data, evaluate_batched
+from train import load_and_prepare_data, evaluate_batched, train_model, decode_qn_cols, FEATURE_COLS
 from model import CO2AssignmentGNN
-from assignment import print_assignment_summary
 
 DATA_DIR = "data"
 DUMMY_PENALTY = (
@@ -44,18 +44,7 @@ def evaluate_physical_assignment_relaxed(
     raw_class_indices = mean_probs.argmax(dim=1).cpu().numpy()
 
     df["raw_class_id"] = raw_class_indices
-    df["raw_m1"] = df["raw_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m1": -1})["m1"]
-    )
-    df["raw_m2"] = df["raw_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m2": -1})["m2"]
-    )
-    df["raw_m3"] = df["raw_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m3": -1})["m3"]
-    )
-    df["raw_r"] = df["raw_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"r": -1})["r"]
-    )
+    decode_qn_cols(df, "raw_class_id", class_to_quantum, "raw")
 
     # Extract the variance specifically for the raw predicted class
     df["raw_variance"] = variance[np.arange(len(df)), raw_class_indices].cpu().numpy()
@@ -96,18 +85,7 @@ def evaluate_physical_assignment_relaxed(
         optimal_class_indices[idx[valid_rows]] = valid_cols
 
     df["pred_class_id"] = optimal_class_indices
-    df["pred_m1"] = df["pred_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m1": -1})["m1"]
-    )
-    df["pred_m2"] = df["pred_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m2": -1})["m2"]
-    )
-    df["pred_m3"] = df["pred_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"m3": -1})["m3"]
-    )
-    df["pred_r"] = df["pred_class_id"].map(
-        lambda cid: class_to_quantum.get(cid, {"r": -1})["r"]
-    )
+    decode_qn_cols(df, "pred_class_id", class_to_quantum, "pred")
 
     # Safely assign variance (use 1.0 for unassigned/dummy states)
     df["assignment_variance"] = 1.0
@@ -121,7 +99,7 @@ def evaluate_physical_assignment_relaxed(
             .numpy()
         )
 
-    test_df = df[df["test_mask"] == True]
+    test_df = df[df["test_mask"]]
     if not test_df.empty:
         mae_m1 = abs(test_df["AFGL_m1"] - test_df["pred_m1"]).mean()
         mae_m2 = abs(test_df["AFGL_m2"] - test_df["pred_m2"]).mean()
@@ -143,8 +121,6 @@ def evaluate_physical_assignment_relaxed(
         )
 
     print("\nRescaling features back to original physical units...")
-    from train import FEATURE_COLS
-
     df[FEATURE_COLS] = scaler.inverse_transform(df[FEATURE_COLS])
 
     output_path = os.path.join(DATA_DIR, "final_relaxed_assignments.csv")
@@ -192,20 +168,7 @@ def main():
     )
 
     print(f"Training Deep Residual GNN on fully-bootstrapped Generation 5 data...")
-    epochs = 100
-
-    for epoch in range(1, epochs + 1):
-        model.train()
-        for batch in train_loader:
-            batch = batch.to(device)
-            optimizer.zero_grad()
-            out = model(batch.x, batch.edge_index, batch.iso_idx)
-            loss = criterion(out[: batch.batch_size], batch.y[: batch.batch_size])
-            loss.backward()
-            optimizer.step()
-
-        if epoch % 20 == 0 or epoch == 1:
-            print(f"Epoch {epoch:03d} complete.")
+    train_model(model, train_loader, device, epochs=100, criterion=criterion, optimizer=optimizer, print_every=20)
 
     test_acc = evaluate_batched(model, test_loader, device)
     print(f"\nFinal Training Complete. Base Test Top-1 Acc: {test_acc:.4f}")
@@ -220,7 +183,38 @@ def main():
         model, inference_loader, device, num_total_nodes, df, mapping_df, scaler
     )
 
-    print_assignment_summary(final_df, variance_threshold=0.05)
+    # Isolate the inference states (!Ma / Ca)
+    inference_df = final_df[~final_df["is_marvel"]]
+    total_inference = len(inference_df)
+    variance_threshold = 0.05  # Define a threshold for high confidence
+
+    if total_inference == 0:
+        print("\n=== ASSIGNMENT SUMMARY ===")
+        print("No inference (!Ma) states found in the dataset to summarize.")
+        return
+
+    # Count how many received a valid mapping from the Hungarian solver
+    assigned_df = inference_df[inference_df["pred_class_id"] != -1]
+    total_assigned = len(assigned_df)
+    assigned_pct = (total_assigned / total_inference) * 100
+
+    # Count how many are highly confident based on the variance threshold
+    confident_df = assigned_df[assigned_df["assignment_variance"] <= variance_threshold]
+    total_confident = len(confident_df)
+    confident_pct = (total_confident / total_inference) * 100
+
+    print("\n" + "=" * 45)
+    print("=== FINAL ASSIGNMENT SUMMARY ===")
+    print("=" * 45)
+    print(f"Total Available Inference (!Ma) States: {total_inference:,}")
+    print(
+        f"Total States Mapped by Solver:          {total_assigned:,} ({assigned_pct:.2f}%)"
+    )
+    print(
+        f"Highly Confident New Assignments:       {total_confident:,} ({confident_pct:.2f}%)"
+    )
+    print(f"  *(Confidence defined as variance <= {variance_threshold})*")
+    print("=" * 45 + "\n")
     print(f"\nTotal Execution Time: {(time.time() - start_time) / 60:.2f} minutes")
 
 

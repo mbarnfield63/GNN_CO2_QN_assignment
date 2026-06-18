@@ -22,9 +22,6 @@ FIGURES_DIR = os.path.join(DATA_DIR, "figures")
 HARVEST_THRESHOLD = 1.0
 CONFIDENT_THRESHOLD = 2.0
 
-# From Session 4 log: Ca states that were previously assigned MARVEL-occupied slots
-KNOWN_PHANTOM_COUNT = 1_336_914
-
 mpl.rcParams.update(thesis_params)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
@@ -57,11 +54,6 @@ def print_overall_stats(ca, unassigned, assigned, hc, harvest, lowconf):
     print(f"    Low confidence (< 1.0):           {len(lowconf):>10,}  ({len(lowconf)/N*100:.1f}%)")
     print(f"  Unassigned (pred_class_id = -1):    {len(unassigned):>10,}  ({len(unassigned)/N*100:.1f}%)")
 
-    # Old pipeline estimate (Session 4 run was slightly different due to retraining)
-    print(f"\nOld-pipeline comparison (Session 4 reference run):")
-    print(f"  Phantom assignments removed: ~{KNOWN_PHANTOM_COUNT:,}")
-    print(f"  Observed unassigned count:    {len(unassigned):,}  (delta: {len(unassigned) - KNOWN_PHANTOM_COUNT:+d})")
-    print(f"  Match: virtually all unassigned Ca states are phantom MARVEL-slot assignments")
 
 
 def print_unassigned_characterisation(unassigned):
@@ -141,20 +133,6 @@ def print_energy_coverage(ca):
 
     print("\nNote: the vast majority of Ca states (82%) are in the 10-15k cm-1 range.")
     print("Assignment rates decrease with energy, as expected for hard high-polyad states.")
-
-
-def print_bootstrap_consistency(assigned):
-    print("\n" + "=" * 60)
-    print("Bootstrap Harvest Consistency Check")
-    print("=" * 60)
-    BOOTSTRAP_LOGGED = 425_700  # from Session 2 log
-    n_harvest_margin = (assigned["assigned_margin"] >= HARVEST_THRESHOLD).sum()
-    print(f"\nBootstrap harvest count (Session 2 log):      {BOOTSTRAP_LOGGED:>9,}")
-    print(f"Assigned Ca with margin >= {HARVEST_THRESHOLD} (current run): {n_harvest_margin:>9,}")
-    print()
-    print("The current run is the post-fix retrain. The discrepancy reflects:")
-    print("  1. MARVEL locking reduced total assigned states")
-    print("  2. Retraining noise shifts per-state margins")
 
 
 def plot_isotopologue_breakdown(df, figure_dir=FIGURES_DIR):
@@ -357,7 +335,6 @@ def main():
     print_unassigned_characterisation(unassigned)
     print_isotopologue_table(ca)
     print_energy_coverage(ca)
-    print_bootstrap_consistency(assigned)
 
     print("\n" + "=" * 60)
     print("Conclusion")

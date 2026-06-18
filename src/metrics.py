@@ -24,7 +24,7 @@ def calculate_final_metrics(df=None, preds_path="data/assigned_co2_predictions.c
     # 1. Filter for the Test Set
     # We only want to evaluate on MARVEL states that the model was NOT trained on.
     # This remains pure even during bootstrapping, as bootstrapping only affects inference states.
-    test_df = df[(df["is_marvel"] == True) & (df["test_mask"] == True)].copy()
+    test_df = df[df["is_marvel"] & df["test_mask"]].copy()
 
     if test_df.empty:
         print("Warning: Test set is empty or could not be found.")
