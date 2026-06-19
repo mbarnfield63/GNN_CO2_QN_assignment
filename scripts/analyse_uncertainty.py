@@ -22,7 +22,7 @@ DATA_DIR = "data"
 PREDICTIONS_PATH = os.path.join(DATA_DIR, "assigned_co2_predictions.csv")
 RELAXED_PATH = os.path.join(DATA_DIR, "final_relaxed_assignments.csv")
 FIGURES_DIR = os.path.join(DATA_DIR, "figures")
-HARVEST_THRESHOLD = 1.0
+HARVEST_THRESHOLD = 0.85
 
 mpl.rcParams.update({"font.size": 11, "legend.frameon": False})
 
@@ -30,9 +30,9 @@ mpl.rcParams.update({"font.size": 11, "legend.frameon": False})
 # ── Signal metadata ───────────────────────────────────────────────────────────
 # (column_name, display_label, higher_is_more_confident)
 SIGNAL_DEFS = [
+    ("assigned_prob", "Assigned\nSoftmax Prob", True),
     ("assigned_margin", "Assigned\nLogit Margin", True),
     ("logit_margin", "Raw\nLogit Margin", True),
-    ("assigned_prob", "Assigned\nSoftmax Prob", True),
     ("entropy", "Softmax\nEntropy", False),
     ("assignment_variance", "MC Dropout\nVariance", False),
     ("mc_predictive_entropy", "MC Predictive\nEntropy", False),

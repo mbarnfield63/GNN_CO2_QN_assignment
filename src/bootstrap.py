@@ -6,11 +6,11 @@ import time
 from config import UNIFIED_DATASET_PATH, PREDICTIONS_PATH, GRAPH_CACHE_PATH
 
 # ── Harvesting threshold ──────────────────────────────────────────────────────
-# Uses assigned_margin (post-Hungarian) rather than raw logit_margin.
-# This naturally excludes Hungarian-conflicted nodes since the solver forces
-# their assigned_margin toward zero, so they fail the threshold without
-# needing an explicit conflict filter.
-MARGIN_THRESHOLD = 1.0
+# Uses assigned_prob (softmax probability of the solver-selected class).
+# Conflicted nodes receive a lower assigned_prob than their model-top-1 class,
+# so they are naturally filtered without an explicit conflict check.
+# At PROB_THRESHOLD=0.85: 99.7% precision on the MARVEL test set.
+PROB_THRESHOLD = 0.85
 
 
 def run_bootstrap():
@@ -27,26 +27,16 @@ def run_bootstrap():
     current_gen = int(df_orig["assignment_generation"].max()) + 1
     print(f"Preparing Generation {current_gen} harvest...")
 
-    # ── Prefer assigned_margin; fall back to logit_margin if absent ──────────
-    margin_col = (
-        "assigned_margin" if "assigned_margin" in df_preds.columns else "logit_margin"
-    )
-    if margin_col == "logit_margin":
-        print(
-            "Warning: assigned_margin not found in predictions — "
-            "falling back to logit_margin. Update train.py."
-        )
-
     # ── Identify confidently-assigned, previously-unharvested inference states ─
     # Conditions:
     #   1. Not MARVEL (those are locked ground truth)
     #   2. Successfully assigned by the solver (pred_class_id != -1)
-    #   3. Assigned margin >= threshold (filters conflicts automatically)
+    #   3. Assigned softmax prob >= threshold (filters low-confidence and conflicts)
     #   4. Not yet harvested in a prior generation
     confident_mask = (
         ~df_preds["is_marvel"]
         & (df_preds["pred_class_id"] != -1)
-        & (df_preds[margin_col] >= MARGIN_THRESHOLD)
+        & (df_preds["assigned_prob"] >= PROB_THRESHOLD)
         & (df_orig["assignment_generation"] == 0)
     )
 
@@ -69,21 +59,21 @@ def run_bootstrap():
     # ── Write predicted class back so build_polyad_class_map can extend
     #    the valid class pool in future generations ─────────────────────────
     pred_id_map = df_preds.set_index("node_id")["pred_class_id"]
-    margin_map = df_preds.set_index("node_id")[margin_col]
+    prob_map = df_preds.set_index("node_id")["assigned_prob"]
 
     df_orig.loc[mask, "combinatorial_class_id"] = df_orig.loc[mask, "node_id"].map(
         pred_id_map
     )
     df_orig.loc[mask, "assignment_generation"] = current_gen
-    df_orig.loc[mask, "locked_margin"] = df_orig.loc[mask, "node_id"].map(margin_map)
+    df_orig.loc[mask, "locked_prob"] = df_orig.loc[mask, "node_id"].map(prob_map)
 
     # ── Per-generation summary statistics ────────────────────────────────────
-    harvested_margins = df_orig.loc[mask, "locked_margin"]
+    harvested_probs = df_orig.loc[mask, "locked_prob"]
     print(f"\n--- Generation {current_gen} Harvest Summary ---")
     print(f"  States harvested : {num_new_train:,}")
-    print(f"  Margin  min      : {harvested_margins.min():.3f}")
-    print(f"  Margin  median   : {harvested_margins.median():.3f}")
-    print(f"  Margin  max      : {harvested_margins.max():.3f}")
+    print(f"  Prob  min        : {harvested_probs.min():.3f}")
+    print(f"  Prob  median     : {harvested_probs.median():.3f}")
+    print(f"  Prob  max        : {harvested_probs.max():.3f}")
     print(f"  Total train set  : {df_orig['train_mask'].sum():,}")
 
     # ── Save and invalidate graph cache ──────────────────────────────────────

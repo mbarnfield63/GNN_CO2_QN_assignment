@@ -29,19 +29,19 @@ def load_and_categorize_data(path=FINAL_DATA_PATH):
     print(f"Loading data from {path}...")
     df = pd.read_csv(path)
 
-    if "assigned_margin" not in df.columns:
+    if "assigned_prob" not in df.columns:
         raise KeyError(
-            "'assigned_margin' column not found. Re-run train.py to regenerate the predictions CSV."
+            "'assigned_prob' column not found. Re-run train.py to regenerate the predictions CSV."
         )
 
     conditions = [
         df["is_marvel"],
         ~df["is_marvel"]
         & (df["pred_class_id"] != -1)
-        & (df["assigned_margin"] >= CONFIDENT_THRESHOLD),
+        & (df["assigned_prob"] >= CONFIDENT_THRESHOLD),
         ~df["is_marvel"]
         & (df["pred_class_id"] != -1)
-        & (df["assigned_margin"] < CONFIDENT_THRESHOLD),
+        & (df["assigned_prob"] < CONFIDENT_THRESHOLD),
         ~df["is_marvel"] & (df["pred_class_id"] == -1),
     ]
 

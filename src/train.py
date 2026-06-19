@@ -87,12 +87,12 @@ def export_run_metrics(final_df, data_dir="data"):
             ((~final_df["is_marvel"]) & (final_df["assignment_generation"] == current_gen)).sum()
         )
 
-    # Median assigned_margin over all Ca states assigned in this run (pred_class_id >= 0).
-    # This is the post-solver logit margin and reflects current model confidence uniformly
-    # across generations, unlike locked_margin which only exists for bootstrapped states.
+    # Median assigned_prob over all Ca states assigned in this run (pred_class_id >= 0).
+    # Reflects current model confidence uniformly across generations, unlike locked_prob
+    # which only exists for bootstrapped states.
     assigned_ca_mask = (~final_df["is_marvel"]) & (final_df["pred_class_id"] >= 0)
-    median_margin = (
-        float(final_df.loc[assigned_ca_mask, "assigned_margin"].median())
+    median_prob = (
+        float(final_df.loc[assigned_ca_mask, "assigned_prob"].median())
         if assigned_ca_mask.any()
         else 0.0
     )
@@ -126,7 +126,7 @@ def export_run_metrics(final_df, data_dir="data"):
             if final_df["hungarian_conflict"].any()
             else 0.0
         ),
-        "median_margin": median_margin,
+        "median_prob": median_prob,
     }
 
     out_path = os.path.join(data_dir, "run_metrics.json")
@@ -205,7 +205,7 @@ def evaluate_batched(model, loader, device):
     return correct / total if total > 0 else 0.0
 
 
-def build_polyad_class_map(df, margin_threshold=0.0):
+def build_polyad_class_map(df, margin_threshold=0.0):  # margin_threshold is prob-scale since bootstrap.py uses locked_prob
     """
     Build polyad -> valid class_ids from MARVEL states, optionally extended
     by high-confidence bootstrapped predictions for sparse high-energy polyads.
@@ -223,13 +223,13 @@ def build_polyad_class_map(df, margin_threshold=0.0):
 
     # Extend from bootstrapped generations if available
     if "assignment_generation" in df.columns and margin_threshold > 0:
-        margin_col = (
-            "assigned_margin" if "assigned_margin" in df.columns else "locked_margin"
+        prob_col = (
+            "locked_prob" if "locked_prob" in df.columns else "locked_margin"
         )
 
         confident = df[
             (df["assignment_generation"] > 0)
-            & (df[margin_col] >= margin_threshold)
+            & (df[prob_col] >= margin_threshold)
             & (df["combinatorial_class_id"] >= 0)
         ][["combinatorial_class_id", "polyad_int"]].dropna()
 
@@ -274,7 +274,7 @@ def evaluate_physical_assignment(
 
     decode_qn_cols(df, "raw_class_id", class_to_quantum, "raw")
 
-    polyad_to_class_ids = build_polyad_class_map(df, margin_threshold=2.0)
+    polyad_to_class_ids = build_polyad_class_map(df, margin_threshold=0.95)
     print(
         f"Polyad-to-class map built from MARVEL states. "
         f"{len(polyad_to_class_ids)} unique polyads. "

@@ -25,10 +25,10 @@ thesis_params = {
 mpl.rcParams.update(thesis_params)
 
 # Labels (must match generate_figures.py CONFIDENT_THRESHOLD)
-HARVEST_THRESHOLD = 1.0
+HARVEST_THRESHOLD = 0.85
 LBL_MARVEL = "MARVEL (Ground Truth)"
-LBL_CONFIDENT = f"ML Confident (Margin \u2265 {HARVEST_THRESHOLD})"
-LBL_CONSTRAINED = f"Physically Constrained (Margin < {HARVEST_THRESHOLD})"
+LBL_CONFIDENT = f"ML Confident (Prob \u2265 {HARVEST_THRESHOLD})"
+LBL_CONSTRAINED = f"Physically Constrained (Prob < {HARVEST_THRESHOLD})"
 LBL_UNASSIGNED = "Unassigned"
 
 # Strict Global Stacking Order (Bottom to Top)
@@ -659,13 +659,11 @@ def plot_confidence_validation_final(df_preds, save_path):
     Final publishable version of the confidence validation figure.
 
     Panel A: Normalised density of assigned_prob — correct vs. incorrect predictions.
-             Threshold line at PROB_THRESHOLD (0.6, Youden-optimal for assigned_prob).
-    Panel B: Precision–Retention trade-off vs. assigned_margin threshold.
-             Threshold line at PAPER_MARGIN_THRESHOLD (1.5, removes visible bump of
-             incorrect predictions seen above T=1.0).
+             Threshold line at HARVEST_THRESHOLD (the bootstrap harvest threshold).
+    Panel B: Precision–Retention trade-off vs. assigned_prob threshold.
     """
-    PROB_THRESHOLD = 0.6
-    PAPER_MARGIN_THRESHOLD = 1.5
+    PROB_THRESHOLD = HARVEST_THRESHOLD
+    PAPER_MARGIN_THRESHOLD = HARVEST_THRESHOLD
 
     print("Generating Final Confidence Validation Plot...")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)

@@ -19,8 +19,8 @@ DATA_DIR = "data"
 PREDICTIONS_PATH = os.path.join(DATA_DIR, "assigned_co2_predictions.csv")
 FIGURES_DIR = os.path.join(DATA_DIR, "figures")
 
-HARVEST_THRESHOLD = 1.0
-CONFIDENT_THRESHOLD = 2.0
+HARVEST_THRESHOLD = 0.85
+CONFIDENT_THRESHOLD = 0.95
 
 mpl.rcParams.update(thesis_params)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -32,12 +32,12 @@ def load_and_segment(path=PREDICTIONS_PATH):
 
     unassigned = ca[ca["pred_class_id"] == -1].copy()
     assigned = ca[ca["pred_class_id"] != -1].copy()
-    hc = assigned[assigned["assigned_margin"] >= CONFIDENT_THRESHOLD].copy()
+    hc = assigned[assigned["assigned_prob"] >= CONFIDENT_THRESHOLD].copy()
     harvest = assigned[
-        (assigned["assigned_margin"] >= HARVEST_THRESHOLD)
-        & (assigned["assigned_margin"] < CONFIDENT_THRESHOLD)
+        (assigned["assigned_prob"] >= HARVEST_THRESHOLD)
+        & (assigned["assigned_prob"] < CONFIDENT_THRESHOLD)
     ].copy()
-    lowconf = assigned[assigned["assigned_margin"] < HARVEST_THRESHOLD].copy()
+    lowconf = assigned[assigned["assigned_prob"] < HARVEST_THRESHOLD].copy()
 
     return df, ca, unassigned, assigned, hc, harvest, lowconf
 
@@ -49,9 +49,9 @@ def print_overall_stats(ca, unassigned, assigned, hc, harvest, lowconf):
     print("=" * 60)
     print(f"\nTotal Ca states:                      {N:>10,}  (100%)")
     print(f"  Assigned (pred_class_id >= 0):      {len(assigned):>10,}  ({len(assigned)/N*100:.1f}%)")
-    print(f"    Highly confident (margin >= 2.0): {len(hc):>10,}  ({len(hc)/N*100:.1f}%)")
-    print(f"    Harvest band (1.0-2.0):           {len(harvest):>10,}  ({len(harvest)/N*100:.1f}%)")
-    print(f"    Low confidence (< 1.0):           {len(lowconf):>10,}  ({len(lowconf)/N*100:.1f}%)")
+    print(f"    Highly confident (prob >= 0.95):  {len(hc):>10,}  ({len(hc)/N*100:.1f}%)")
+    print(f"    Harvest band (0.85-0.95):         {len(harvest):>10,}  ({len(harvest)/N*100:.1f}%)")
+    print(f"    Low confidence (< 0.85):          {len(lowconf):>10,}  ({len(lowconf)/N*100:.1f}%)")
     print(f"  Unassigned (pred_class_id = -1):    {len(unassigned):>10,}  ({len(unassigned)/N*100:.1f}%)")
 
 
@@ -60,14 +60,15 @@ def print_unassigned_characterisation(unassigned):
     print("\n" + "=" * 60)
     print("Unassigned Ca State Characterisation")
     print("=" * 60)
-    lm = unassigned["logit_margin"]
-    print(f"\nRaw logit_margin of unassigned Ca states:")
-    print(f"  Median:     {lm.median():.3f}")
-    print(f"  Mean:       {lm.mean():.3f}")
-    print(f"  < 0:        {(lm < 0).mean()*100:.1f}%")
-    print(f"  0-1.0:      {((lm >= 0) & (lm < HARVEST_THRESHOLD)).mean()*100:.1f}%")
-    print(f"  1.0-2.0:    {((lm >= HARVEST_THRESHOLD) & (lm < CONFIDENT_THRESHOLD)).mean()*100:.1f}%")
-    print(f"  >= 2.0:     {(lm >= CONFIDENT_THRESHOLD).mean()*100:.1f}%")
+    ap = unassigned["assigned_prob"] if "assigned_prob" in unassigned.columns else unassigned["logit_margin"]
+    col_name = "assigned_prob" if "assigned_prob" in unassigned.columns else "logit_margin"
+    print(f"\n{col_name} of unassigned Ca states:")
+    print(f"  Median:      {ap.median():.3f}")
+    print(f"  Mean:        {ap.mean():.3f}")
+    print(f"  < 0.5:       {(ap < 0.5).mean()*100:.1f}%")
+    print(f"  0.5-0.85:    {((ap >= 0.5) & (ap < HARVEST_THRESHOLD)).mean()*100:.1f}%")
+    print(f"  0.85-0.95:   {((ap >= HARVEST_THRESHOLD) & (ap < CONFIDENT_THRESHOLD)).mean()*100:.1f}%")
+    print(f"  >= 0.95:     {(ap >= CONFIDENT_THRESHOLD).mean()*100:.1f}%")
     print()
     print("  Interpretation: high raw logit_margin means the GNN was confident about")
     print("  a specific class for these states - but that class was MARVEL-locked.")
