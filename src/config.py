@@ -1,7 +1,7 @@
 import os
 
 # External path to the CO2 Dozen .states files
-STATES_DIR = os.path.abspath(r"C:\Code\Work\raw_data_store\Triatomics\CO2")
+STATES_DIR = os.path.abspath(r"C:\Code\_raw_data_store\Triatomics\CO2")
 
 # Canonical data paths shared across src/ scripts
 DATA_DIR = "data"
@@ -97,17 +97,17 @@ ISOTOPES = [
     {
         "id": "728",
         "C_mass": 12,
-        "O_A_mass": 16,
+        "O_A_mass": 17,
         "O_B_mass": 18,
         "is_symmetric": 0,
-        "file": "16O-12C-18O__Dozen.states.cut",
+        "file": "17O-12C-18O__Dozen.states.cut",
     },
     {
         "id": "738",
         "C_mass": 13,
-        "O_A_mass": 16,
+        "O_A_mass": 17,
         "O_B_mass": 18,
         "is_symmetric": 0,
-        "file": "16O-13C-18O__Dozen.states.cut",
+        "file": "17O-13C-18O__Dozen.states.cut",
     },
 ]

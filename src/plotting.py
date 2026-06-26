@@ -25,7 +25,7 @@ thesis_params = {
 mpl.rcParams.update(thesis_params)
 
 # Labels (must match generate_figures.py CONFIDENT_THRESHOLD)
-HARVEST_THRESHOLD = 0.85
+HARVEST_THRESHOLD = 0.75
 LBL_MARVEL = "MARVEL (Ground Truth)"
 LBL_CONFIDENT = f"ML Confident (Prob \u2265 {HARVEST_THRESHOLD})"
 LBL_CONSTRAINED = f"Physically Constrained (Prob < {HARVEST_THRESHOLD})"
@@ -556,7 +556,7 @@ def plot_assignment_rate_by_energy(df, save_path="data/figures/assignment_rate_b
 
     total_per_bin, _ = np.histogram(ca_df["energy"], bins=bins)
 
-    max_gen = int(ca_df["assignment_generation"].max()) if not ca_df.empty else 0
+    max_gen = int(ca_df["assignment_generation"].max()) if ("assignment_generation" in ca_df.columns and not ca_df.empty) else 0
 
     # Per-generation incremental counts (non-cumulative)
     gen_rates = []

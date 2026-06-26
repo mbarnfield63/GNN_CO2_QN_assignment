@@ -19,7 +19,7 @@ DATA_DIR = "data"
 PREDICTIONS_PATH = os.path.join(DATA_DIR, "assigned_co2_predictions.csv")
 FIGURES_DIR = os.path.join(DATA_DIR, "figures")
 
-HARVEST_THRESHOLD = 0.85
+HARVEST_THRESHOLD = 0.75
 CONFIDENT_THRESHOLD = 0.95
 
 mpl.rcParams.update(thesis_params)
@@ -76,13 +76,16 @@ def print_unassigned_characterisation(unassigned):
     print("  because their predicted class is already owned by a MARVEL state.")
 
     print("\nAssignment generation of unassigned Ca states:")
-    gen_counts = unassigned["assignment_generation"].value_counts().sort_index()
-    gen_0 = gen_counts.get(0, 0)
-    gen_pos = gen_counts[gen_counts.index > 0].sum()
-    print(f"  Gen 0 (never bootstrapped): {gen_0:>9,}  ({gen_0/len(unassigned)*100:.1f}%)")
-    print(f"  Gen 1-5 (bootstrapped):     {gen_pos:>9,}  ({gen_pos/len(unassigned)*100:.1f}%)")
-    print("  Note: the small bootstrapped fraction were previously harvested but")
-    print("  their class was MARVEL-locked in the final post-fix training run.")
+    if "assignment_generation" in unassigned.columns:
+        gen_counts = unassigned["assignment_generation"].value_counts().sort_index()
+        gen_0 = gen_counts.get(0, 0)
+        gen_pos = gen_counts[gen_counts.index > 0].sum()
+        print(f"  Gen 0 (never bootstrapped): {gen_0:>9,}  ({gen_0/len(unassigned)*100:.1f}%)")
+        print(f"  Gen 1-5 (bootstrapped):     {gen_pos:>9,}  ({gen_pos/len(unassigned)*100:.1f}%)")
+        print("  Note: the small bootstrapped fraction were previously harvested but")
+        print("  their class was MARVEL-locked in the final post-fix training run.")
+    else:
+        print("  (assignment_generation column absent — gen 0 run, no bootstrap data)")
 
 
 def print_isotopologue_table(ca):

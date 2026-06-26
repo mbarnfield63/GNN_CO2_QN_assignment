@@ -73,7 +73,7 @@ def export_run_metrics(final_df, data_dir="data"):
         & (test_df["AFGL_r"] == test_df["pred_r"])
     )
 
-    current_gen = int(final_df["assignment_generation"].max())
+    current_gen = int(final_df["assignment_generation"].max()) if "assignment_generation" in final_df.columns else 0
     n_assigned = int((final_df["pred_class_id"] >= 0).sum())
     n_total = len(final_df)
 

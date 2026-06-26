@@ -22,7 +22,7 @@ DATA_DIR = "data"
 PREDICTIONS_PATH = os.path.join(DATA_DIR, "assigned_co2_predictions.csv")
 RELAXED_PATH = os.path.join(DATA_DIR, "final_relaxed_assignments.csv")
 FIGURES_DIR = os.path.join(DATA_DIR, "figures")
-HARVEST_THRESHOLD = 0.85
+HARVEST_THRESHOLD = 0.75
 
 mpl.rcParams.update({"font.size": 11, "legend.frameon": False})
 
