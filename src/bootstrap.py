@@ -1,9 +1,10 @@
 import sys
+import json
 import pandas as pd
 import os
 import time
 
-from config import UNIFIED_DATASET_PATH, PREDICTIONS_PATH, GRAPH_CACHE_PATH, CLASS_MAPPING_PATH
+from config import UNIFIED_DATASET_PATH, PREDICTIONS_PATH, GRAPH_CACHE_PATH, CLASS_MAPPING_PATH, BOOTSTRAP_METRICS_PATH
 
 # ── Harvesting threshold ──────────────────────────────────────────────────────
 # Uses assigned_prob (softmax probability of the solver-selected class).
@@ -161,6 +162,15 @@ def run_bootstrap():
     class_map = pd.read_csv(CLASS_MAPPING_PATH)
     df_orig, n_r_swaps = _apply_r_correction(df_orig, df_preds, class_map)
     print(f"  r-label corrections : {n_r_swaps:,}  (energy-rank disagreements corrected)")
+
+    # ── Persist r-correction count to sidecar ────────────────────────────────
+    boot_metrics = []
+    if os.path.exists(BOOTSTRAP_METRICS_PATH):
+        with open(BOOTSTRAP_METRICS_PATH) as f:
+            boot_metrics = json.load(f)
+    boot_metrics.append({"generation": current_gen, "n_r_corrections": n_r_swaps})
+    with open(BOOTSTRAP_METRICS_PATH, "w") as f:
+        json.dump(boot_metrics, f)
 
     # ── Save and invalidate graph cache ──────────────────────────────────────
     df_orig.to_csv(UNIFIED_DATASET_PATH, index=False)

@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import time
 
-from config import DATA_DIR, UNIFIED_DATASET_PATH, PREDICTIONS_PATH, GRAPH_CACHE_PATH
+from config import DATA_DIR, UNIFIED_DATASET_PATH, PREDICTIONS_PATH, GRAPH_CACHE_PATH, BOOTSTRAP_METRICS_PATH
 from plotting import (
     plot_assignment_rate_by_energy,
     plot_bootstrap_margin_gain,
@@ -88,6 +88,9 @@ def main():
     if os.path.exists(METRICS_PATH):
         os.remove(METRICS_PATH)
         print(f"Cleared stale metrics from {METRICS_PATH}.")
+    if os.path.exists(BOOTSTRAP_METRICS_PATH):
+        os.remove(BOOTSTRAP_METRICS_PATH)
+        print(f"Cleared stale bootstrap metrics from {BOOTSTRAP_METRICS_PATH}.")
 
     print(f"\nStarting Bootstrapping Pipeline — {ITERATIONS} generation(s).\n")
 
@@ -181,6 +184,10 @@ def main():
     # ── Summary table ─────────────────────────────────────────────────────────
     if metrics_history:
         summary_df = pd.DataFrame(metrics_history)
+        if os.path.exists(BOOTSTRAP_METRICS_PATH):
+            with open(BOOTSTRAP_METRICS_PATH) as f:
+                boot_records = {r["generation"]: r["n_r_corrections"] for r in json.load(f)}
+            summary_df["n_r_corrections"] = summary_df["generation"].map(boot_records).fillna(0).astype(int)
         summary_df.to_csv(SUMMARY_PATH, index=False)
 
         print("\n--- Pipeline Summary ---")

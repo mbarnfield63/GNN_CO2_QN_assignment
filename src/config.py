@@ -9,6 +9,7 @@ UNIFIED_DATASET_PATH = os.path.join(DATA_DIR, "unified_co2_graph_data.csv")
 CLASS_MAPPING_PATH = os.path.join(DATA_DIR, "class_mapping.csv")
 GRAPH_CACHE_PATH = os.path.join(DATA_DIR, "cached_pyg_graph.pt")
 PREDICTIONS_PATH = os.path.join(DATA_DIR, "assigned_co2_predictions.csv")
+BOOTSTRAP_METRICS_PATH = os.path.join(DATA_DIR, "bootstrap_metrics.json")
 
 # Define isotopes to loop through
 ISOTOPES = [
