@@ -7,7 +7,6 @@ sys.path.insert(
 
 import torch
 import torch.nn as nn
-from torch_geometric.loader import NeighborLoader
 import pandas as pd
 import numpy as np
 import time
@@ -23,15 +22,13 @@ DUMMY_PENALTY = (
 )
 
 
-def evaluate_physical_assignment_relaxed(
-    model, loader, device, num_nodes, df, mapping_df, scaler
-):
+def evaluate_physical_assignment_relaxed(model, data, device, df, mapping_df, scaler):
     """Enforces constraints with a dummy 'trash can' class for ghost states."""
     model.eval()
 
     print("\nCalculating epistemic uncertainty via MC Dropout...")
     mean_probs, variance, mean_sample_entropy = model.mc_dropout_predict(
-        loader, device, num_nodes, num_samples=30
+        data, device, num_samples=30
     )
 
     print("Decoding combinatorial classes for mapping...")
@@ -150,38 +147,13 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-4)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
-    print("\nInitializing GPU Mini-Batching for Final Run...")
-    train_loader = NeighborLoader(
-        data,
-        num_neighbors=[10, 10, 10, 10],
-        batch_size=2048,
-        input_nodes=data.train_mask,
-        shuffle=True,
-    )
+    print("Training Deep Residual GNN on fully-bootstrapped Generation 5 data (full-batch)...")
+    train_model(model, data, device, epochs=100, criterion=criterion, optimizer=optimizer, print_every=20)
 
-    test_loader = NeighborLoader(
-        data,
-        num_neighbors=[10, 10, 10, 10],
-        batch_size=2048,
-        input_nodes=data.test_mask,
-        shuffle=False,
-    )
-
-    print(f"Training Deep Residual GNN on fully-bootstrapped Generation 5 data...")
-    train_model(model, train_loader, device, epochs=100, criterion=criterion, optimizer=optimizer, print_every=20)
-
-    test_acc = evaluate_batched(model, test_loader, device)
+    test_acc = evaluate_batched(model, data, data.test_mask, device)
     print(f"\nFinal Training Complete. Base Test Top-1 Acc: {test_acc:.4f}")
 
-    print("\nPreparing for global inference (Mini-Batched)...")
-    inference_loader = NeighborLoader(
-        data, num_neighbors=[10, 10, 10, 10], batch_size=2048, shuffle=False
-    )
-
-    num_total_nodes = data.x.shape[0]
-    final_df = evaluate_physical_assignment_relaxed(
-        model, inference_loader, device, num_total_nodes, df, mapping_df, scaler
-    )
+    final_df = evaluate_physical_assignment_relaxed(model, data, device, df, mapping_df, scaler)
 
     # Isolate the inference states (!Ma / Ca)
     inference_df = final_df[~final_df["is_marvel"]]

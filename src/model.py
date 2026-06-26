@@ -63,81 +63,38 @@ class CO2AssignmentGNN(nn.Module):
 
         return self.head(x)
 
-    def mc_dropout_predict(self, loader, device, num_nodes, num_samples=30):
-        """Runs stochastic forward passes using optimal batch-first GPU execution."""
+    def mc_dropout_predict(self, data, device, num_samples=30):
+        """Runs stochastic forward passes on the full graph."""
         self.train()  # Force dropout ON
-
-        # Look up the number of output classes dynamically from the final linear layer
         num_classes = self.head[-1].out_features
+        num_nodes = data.x.shape[0]
+        data = data.to(device)
 
-        # We allocate these ONLY ONCE on the CPU to prevent memory fragmentation
-        mean_probs = torch.zeros(
-            (num_nodes, num_classes), dtype=torch.float32, device="cpu"
-        )
-        variance = torch.zeros(
-            (num_nodes, num_classes), dtype=torch.float32, device="cpu"
-        )
-        # Mean per-sample entropy across MC passes — needed for BALD
+        mean_probs = torch.zeros((num_nodes, num_classes), dtype=torch.float32, device="cpu")
+        sq_probs = torch.zeros((num_nodes, num_classes), dtype=torch.float32, device="cpu")
         mean_entropy = torch.zeros(num_nodes, dtype=torch.float32, device="cpu")
 
         with torch.no_grad():
-            for batch in tqdm(loader, desc="MC Dropout Inference (Batched)"):
-                batch = batch.to(device)
+            for _ in tqdm(range(num_samples), desc="MC Dropout Inference"):
+                logits = self.forward(data.x, data.edge_index, data.iso_idx)
+                probs = F.softmax(logits, dim=1).cpu()
+                H = -(probs * torch.log(probs + 1e-10)).sum(dim=1)
+                mean_probs += probs
+                sq_probs += probs ** 2
+                mean_entropy += H
 
-                # Accumulators for this specific tiny batch (stays on GPU)
-                batch_mean = None
-                batch_sq = None
-                batch_H = None  # mean per-sample entropy H(p_t)
-
-                # Run the 30 stochastic passes on the exact same GPU subgraph
-                for _ in range(num_samples):
-                    logits = self.forward(batch.x, batch.edge_index, batch.iso_idx)
-                    probs = F.softmax(logits[: batch.batch_size], dim=1)
-
-                    # Per-sample entropy: H(p_t) = -sum_c p_t,c * log(p_t,c)
-                    H_t = -(probs * torch.log(probs + 1e-10)).sum(dim=1)
-
-                    if batch_mean is None:
-                        batch_mean = probs.clone()
-                        batch_sq = (probs**2).clone()
-                        batch_H = H_t.clone()
-                    else:
-                        batch_mean += probs
-                        batch_sq += probs**2
-                        batch_H += H_t
-
-                # Calculate batch statistics entirely on the GPU
-                batch_mean /= num_samples
-                batch_sq /= num_samples
-                batch_H /= num_samples
-                batch_var = batch_sq - (batch_mean**2)
-
-                # Map the finished batch predictions back to the global CPU tensor just once
-                target_n_ids = batch.n_id[: batch.batch_size].cpu()
-                mean_probs[target_n_ids] = batch_mean.cpu()
-                variance[target_n_ids] = batch_var.cpu()
-                mean_entropy[target_n_ids] = batch_H.cpu()
-
+        mean_probs /= num_samples
+        sq_probs /= num_samples
+        mean_entropy /= num_samples
+        variance = sq_probs - mean_probs ** 2
         return mean_probs, variance, mean_entropy
 
-    def get_logits_and_probs(self, loader, device, num_nodes):
-        """Runs a standard evaluation pass to extract raw logits."""
-        self.eval()  # Standard evaluation mode, NO dropout
-
-        num_classes = self.head[-1].out_features
-        all_logits = torch.zeros(
-            (num_nodes, num_classes), dtype=torch.float32, device="cpu"
-        )
-
+    def get_logits_and_probs(self, data, device):
+        """Runs a single full-graph forward pass to extract raw logits."""
+        self.eval()
+        data = data.to(device)
         with torch.no_grad():
-            for batch in tqdm(loader, desc="Extracting Logits"):
-                batch = batch.to(device)
-                logits = self.forward(batch.x, batch.edge_index, batch.iso_idx)
-
-                target_n_ids = batch.n_id[: batch.batch_size].cpu()
-                all_logits[target_n_ids] = logits[: batch.batch_size].cpu()
-
-        # Calculate probabilities from logits
+            all_logits = self.forward(data.x, data.edge_index, data.iso_idx).cpu()
         probs = F.softmax(all_logits, dim=1)
         return all_logits, probs
 
