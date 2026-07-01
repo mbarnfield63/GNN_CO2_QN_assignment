@@ -164,58 +164,30 @@ def decode_qn_cols(df, id_col, class_to_quantum, prefix):
         )
 
 
-def train_model(
-    model,
-    train_loader,
-    device,
-    epochs,
-    criterion,
-    optimizer,
-    val_loader=None,
-    print_every=10,
-    n_train=None,
-):
-    """Run the training loop; logs val accuracy if val_loader and n_train are provided."""
+def train_model(model, data, device, epochs, criterion, optimizer, print_every=10):
+    # ponytail: full-batch; switch to NeighborLoader if GPU OOM
+    data = data.to(device)
     for epoch in range(1, epochs + 1):
         model.train()
-        total_loss = 0
-        for batch in train_loader:
-            batch = batch.to(device)
-            optimizer.zero_grad()
-            out = model(batch.x, batch.edge_index, batch.iso_idx)
-            loss = criterion(out[: batch.batch_size], batch.y[: batch.batch_size])
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item() * batch.batch_size
+        optimizer.zero_grad()
+        out = model(data.x, data.edge_index, data.iso_idx)
+        loss = criterion(out[data.train_mask], data.y[data.train_mask])
+        loss.backward()
+        optimizer.step()
         if epoch % print_every == 0 or epoch == 1:
-            if val_loader is not None and n_train is not None:
-                avg_loss = total_loss / n_train
-                val_acc = evaluate_batched(model, val_loader, device)
-                print(
-                    f"Epoch {epoch:03d} | Loss: {avg_loss:.4f} | Val Top-1 Acc: {val_acc:.4f}"
-                )
-            else:
-                print(f"Epoch {epoch:03d} complete.")
+            val_acc = evaluate_batched(model, data, data.val_mask, device)
+            print(
+                f"Epoch {epoch:03d} | Loss: {loss.item():.4f} | Val Top-1 Acc: {val_acc:.4f}"
+            )
 
 
-def evaluate_batched(model, loader, device):
-    """Calculates Top-1 Accuracy using mini-batches."""
+def evaluate_batched(model, data, mask, device):
     model.eval()
-    correct = 0
-    total = 0
+    data = data.to(device)
     with torch.no_grad():
-        for batch in loader:
-            batch = batch.to(device)
-            out = model(batch.x, batch.edge_index, batch.iso_idx)
-
-            # The target nodes are the first 'batch_size' nodes in the sampled graph
-            preds = out[: batch.batch_size].argmax(dim=1)
-            true = batch.y[: batch.batch_size]
-
-            correct += (preds == true).sum().item()
-            total += batch.batch_size
-
-    return correct / total if total > 0 else 0.0
+        out = model(data.x, data.edge_index, data.iso_idx)
+    preds = out[mask].argmax(dim=1)
+    return (preds == data.y[mask]).sum().item() / mask.sum().item()
 
 
 def build_polyad_class_map(
@@ -257,14 +229,12 @@ def build_polyad_class_map(
     return {k: sorted(v) for k, v in polyad_map.items()}
 
 
-def evaluate_physical_assignment(
-    model, loader, device, num_nodes, df, mapping_df, scaler
-):
+def evaluate_physical_assignment(model, data, device, df, mapping_df, scaler):
     """Enforces 1-to-1 physical constraints locally and decodes combinatorial classes."""
     model.eval()
 
     print("\nExtracting logits via standard evaluation pass...")
-    all_logits, mean_probs = model.get_logits_and_probs(loader, device, num_nodes)
+    all_logits, mean_probs = model.get_logits_and_probs(data, device)
 
     print("Extracting raw argmax predictions and margins...")
     all_logits_cpu = all_logits.cpu().numpy()
@@ -473,30 +443,10 @@ def main():
     val_loader = NeighborLoader(**loader_kw, input_nodes=data.val_mask, shuffle=False)
     test_loader = NeighborLoader(**loader_kw, input_nodes=data.test_mask, shuffle=False)
 
-    print("Training Deep Residual GNN via Mini-Batches...")
-    train_model(
-        model,
-        train_loader,
-        device,
-        epochs=100,
-        criterion=criterion,
-        optimizer=optimizer,
-        val_loader=val_loader,
-        print_every=10,
-        n_train=data.train_mask.sum().item(),
-    )
-
-    test_acc = evaluate_batched(model, test_loader, device)
+    test_acc = evaluate_batched(model, data, data.test_mask, device)
     print(f"\nTraining Complete. Base Test Top-1 Acc: {test_acc:.4f}")
 
-    print("\nPreparing for global inference (Mini-Batched)...")
-
-    inference_loader = NeighborLoader(**loader_kw, shuffle=False)
-
-    num_total_nodes = data.x.shape[0]
-    final_df = evaluate_physical_assignment(
-        model, inference_loader, device, num_total_nodes, df, mapping_df, scaler
-    )
+    final_df = evaluate_physical_assignment(model, data, device, df, mapping_df, scaler)
     export_run_metrics(final_df)
 
     end = time.time()

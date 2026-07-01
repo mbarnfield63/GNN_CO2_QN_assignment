@@ -20,7 +20,6 @@ from train import (
     train_model,
     decode_qn_cols,
     FEATURE_COLS,
-    build_polyad_class_map,
 )
 from model import CO2AssignmentGNN
 
@@ -184,13 +183,17 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-4)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
-    print("\nInitializing GPU Mini-Batching for Final Run...")
-    train_loader = NeighborLoader(
+    print(
+        "Training Deep Residual GNN on fully-bootstrapped Generation 5 data (full-batch)..."
+    )
+    train_model(
+        model,
         data,
-        num_neighbors=[10, 10, 10, 10],
-        batch_size=2048,
-        input_nodes=data.train_mask,
-        shuffle=True,
+        device,
+        epochs=100,
+        criterion=criterion,
+        optimizer=optimizer,
+        print_every=20,
     )
 
     test_loader = NeighborLoader(
@@ -215,14 +218,8 @@ def main():
     test_acc = evaluate_batched(model, test_loader, device)
     print(f"\nFinal Training Complete. Base Test Top-1 Acc: {test_acc:.4f}")
 
-    print("\nPreparing for global inference (Mini-Batched)...")
-    inference_loader = NeighborLoader(
-        data, num_neighbors=[10, 10, 10, 10], batch_size=2048, shuffle=False
-    )
-
-    num_total_nodes = data.x.shape[0]
     final_df = evaluate_physical_assignment_relaxed(
-        model, inference_loader, device, num_total_nodes, df, mapping_df, scaler
+        model, data, device, df, mapping_df, scaler
     )
 
     # Isolate the inference states (!Ma / Ca)
