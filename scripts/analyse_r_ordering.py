@@ -17,7 +17,10 @@ Output
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
+)
 
 import pandas as pd
 import matplotlib as mpl
@@ -43,11 +46,13 @@ def check_marvel_r_accuracy(df):
     test["r_correct"] = test["pred_r"] == test["AFGL_r"]
 
     n_correct = int(test["r_correct"].sum())
-    n_total   = len(test)
-    overall   = n_correct / n_total * 100
+    n_total = len(test)
+    overall = n_correct / n_total * 100
 
-    print(f"MARVEL test r-label accuracy (consistent polyad states): "
-          f"{overall:.1f}%  ({n_correct:,}/{n_total:,})")
+    print(
+        f"MARVEL test r-label accuracy (consistent polyad states): "
+        f"{overall:.1f}%  ({n_correct:,}/{n_total:,})"
+    )
 
     by_polyad = (
         test.groupby("polyad_int")["r_correct"]

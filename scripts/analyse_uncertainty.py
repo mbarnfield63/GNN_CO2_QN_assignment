@@ -90,7 +90,11 @@ def _precision_retention(values, correct, n_total, higher_is_confident):
     """Sweep thresholds and return (thresholds, precision, retention) arrays."""
     lo, hi = np.percentile(values, 1), np.percentile(values, 99)
     thresholds = np.linspace(lo, hi, 300)
-    masks = (values[None, :] >= thresholds[:, None]) if higher_is_confident else (values[None, :] <= thresholds[:, None])
+    masks = (
+        (values[None, :] >= thresholds[:, None])
+        if higher_is_confident
+        else (values[None, :] <= thresholds[:, None])
+    )
     counts = masks.sum(axis=1)
     n_valid = int(np.argmax(counts == 0)) if (counts == 0).any() else len(thresholds)
     thresholds, masks, counts = thresholds[:n_valid], masks[:n_valid], counts[:n_valid]
@@ -249,27 +253,12 @@ def plot_comparison(test_df, available_signals, auroc_by_col):
 
 
 def plot_calibration(test_df):
-    """Reliability diagram for assigned_prob."""
+    """Reliability diagram for assigned_prob — raw scatter + binned curve + y=x."""
     if "assigned_prob" not in test_df.columns:
         return
 
     correct = test_df["is_correct"].values
     probs = test_df["assigned_prob"].values
-
-    n_bins = 5
-    bin_edges = np.linspace(0, 1, n_bins + 1)
-    bin_accs, bin_confs = [], []
-    for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
-        mask = (probs >= lo) & (probs < hi)
-        if mask.sum() > 0:
-            bin_accs.append(correct[mask].mean())
-            bin_confs.append(probs[mask].mean())
-        else:
-            bin_accs.append(np.nan)
-            bin_confs.append((lo + hi) / 2)
-
-    bin_accs = np.array(bin_accs)
-    bin_confs = np.array(bin_confs)
 
     # Print per-QN accuracies for the paper table
     qn_pairs = [
@@ -286,25 +275,31 @@ def plot_calibration(test_df):
             print(f"  {name}: {acc:.2f}%")
     print()
 
-    fig, ax1 = plt.subplots(1, 1, figsize=(6, 5))
+    # Equal-count (quantile) bins: each bin has the same number of states,
+    # so sparse low-probability regions don't produce noisy isolated points.
+    n_bins = 20
+    bin_edges = np.percentile(probs, np.linspace(0, 100, n_bins + 1))
+    bin_edges = np.unique(bin_edges)
+    bin_confs, bin_accs = [], []
+    for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
+        mask = (probs >= lo) & (probs < hi)
+        if mask.sum() > 0:
+            bin_confs.append(probs[mask].mean())
+            bin_accs.append(correct[mask].mean())
 
-    # ── Reliability diagram ───────────────────────────────────────────────────
-    valid = ~np.isnan(bin_accs)
-    bin_width = 1.0 / n_bins * 0.8
-    ax1.bar(
-        bin_confs[valid],
-        bin_accs[valid],
-        width=bin_width,
-        alpha=0.65,
-        color="#2980b9",
-        label="Observed accuracy",
+    fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+
+    ax.plot(
+        bin_confs, bin_accs, color="#e74c3c", linewidth=2, label="Calibration curve"
     )
-    ax1.set_xlabel("Mean predicted probability (assigned_prob)")
-    ax1.set_ylabel("Observed accuracy")
-    ax1.set_xlim(0, 1)
-    ax1.set_ylim(0, 1)
-    ax1.legend()
-    ax1.grid(linestyle="--", alpha=0.4)
+    ax.plot([0, 1], [0, 1], "k--", linewidth=1.2, label="Perfect calibration")
+
+    ax.set_xlabel("Assigned softmax probability")
+    ax.set_ylabel("Observed accuracy")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(-0.05, 1.05)
+    ax.legend()
+    ax.grid(linestyle="--", alpha=0.4)
 
     plt.tight_layout()
     save_path = os.path.join(FIGURES_DIR, "calibration.png")

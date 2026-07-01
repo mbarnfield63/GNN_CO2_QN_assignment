@@ -6,7 +6,10 @@ affect downstream scientific conclusions?
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
+)
 
 import numpy as np
 import pandas as pd
@@ -48,26 +51,43 @@ def print_overall_stats(ca, unassigned, assigned, hc, harvest, lowconf):
     print("Ca Assignment Coverage (Q2: MARVEL Locking Impact)")
     print("=" * 60)
     print(f"\nTotal Ca states:                      {N:>10,}  (100%)")
-    print(f"  Assigned (pred_class_id >= 0):      {len(assigned):>10,}  ({len(assigned)/N*100:.1f}%)")
-    print(f"    Highly confident (prob >= 0.95):  {len(hc):>10,}  ({len(hc)/N*100:.1f}%)")
-    print(f"    Harvest band (0.85-0.95):         {len(harvest):>10,}  ({len(harvest)/N*100:.1f}%)")
-    print(f"    Low confidence (< 0.85):          {len(lowconf):>10,}  ({len(lowconf)/N*100:.1f}%)")
-    print(f"  Unassigned (pred_class_id = -1):    {len(unassigned):>10,}  ({len(unassigned)/N*100:.1f}%)")
-
+    print(
+        f"  Assigned (pred_class_id >= 0):      {len(assigned):>10,}  ({len(assigned)/N*100:.1f}%)"
+    )
+    print(
+        f"    Highly confident (prob >= 0.95):  {len(hc):>10,}  ({len(hc)/N*100:.1f}%)"
+    )
+    print(
+        f"    Harvest band (0.85-0.95):         {len(harvest):>10,}  ({len(harvest)/N*100:.1f}%)"
+    )
+    print(
+        f"    Low confidence (< 0.85):          {len(lowconf):>10,}  ({len(lowconf)/N*100:.1f}%)"
+    )
+    print(
+        f"  Unassigned (pred_class_id = -1):    {len(unassigned):>10,}  ({len(unassigned)/N*100:.1f}%)"
+    )
 
 
 def print_unassigned_characterisation(unassigned):
     print("\n" + "=" * 60)
     print("Unassigned Ca State Characterisation")
     print("=" * 60)
-    ap = unassigned["assigned_prob"] if "assigned_prob" in unassigned.columns else unassigned["logit_margin"]
-    col_name = "assigned_prob" if "assigned_prob" in unassigned.columns else "logit_margin"
+    ap = (
+        unassigned["assigned_prob"]
+        if "assigned_prob" in unassigned.columns
+        else unassigned["logit_margin"]
+    )
+    col_name = (
+        "assigned_prob" if "assigned_prob" in unassigned.columns else "logit_margin"
+    )
     print(f"\n{col_name} of unassigned Ca states:")
     print(f"  Median:      {ap.median():.3f}")
     print(f"  Mean:        {ap.mean():.3f}")
     print(f"  < 0.5:       {(ap < 0.5).mean()*100:.1f}%")
     print(f"  0.5-0.85:    {((ap >= 0.5) & (ap < HARVEST_THRESHOLD)).mean()*100:.1f}%")
-    print(f"  0.85-0.95:   {((ap >= HARVEST_THRESHOLD) & (ap < CONFIDENT_THRESHOLD)).mean()*100:.1f}%")
+    print(
+        f"  0.85-0.95:   {((ap >= HARVEST_THRESHOLD) & (ap < CONFIDENT_THRESHOLD)).mean()*100:.1f}%"
+    )
     print(f"  >= 0.95:     {(ap >= CONFIDENT_THRESHOLD).mean()*100:.1f}%")
     print()
     print("  Interpretation: high raw logit_margin means the GNN was confident about")
@@ -80,8 +100,12 @@ def print_unassigned_characterisation(unassigned):
         gen_counts = unassigned["assignment_generation"].value_counts().sort_index()
         gen_0 = gen_counts.get(0, 0)
         gen_pos = gen_counts[gen_counts.index > 0].sum()
-        print(f"  Gen 0 (never bootstrapped): {gen_0:>9,}  ({gen_0/len(unassigned)*100:.1f}%)")
-        print(f"  Gen 1-5 (bootstrapped):     {gen_pos:>9,}  ({gen_pos/len(unassigned)*100:.1f}%)")
+        print(
+            f"  Gen 0 (never bootstrapped): {gen_0:>9,}  ({gen_0/len(unassigned)*100:.1f}%)"
+        )
+        print(
+            f"  Gen 1-5 (bootstrapped):     {gen_pos:>9,}  ({gen_pos/len(unassigned)*100:.1f}%)"
+        )
         print("  Note: the small bootstrapped fraction were previously harvested but")
         print("  their class was MARVEL-locked in the final post-fix training run.")
     else:
@@ -96,22 +120,26 @@ def print_isotopologue_table(ca):
     def tier_stats(g):
         total = len(g)
         n_assigned = (g["pred_class_id"] != -1).sum()
-        n_hc = ((g["pred_class_id"] != -1) & (g["assigned_margin"] >= CONFIDENT_THRESHOLD)).sum()
+        n_hc = (
+            (g["pred_class_id"] != -1) & (g["assigned_margin"] >= CONFIDENT_THRESHOLD)
+        ).sum()
         n_harvest = (
             (g["pred_class_id"] != -1)
             & (g["assigned_margin"] >= HARVEST_THRESHOLD)
             & (g["assigned_margin"] < CONFIDENT_THRESHOLD)
         ).sum()
         n_unassigned = (g["pred_class_id"] == -1).sum()
-        return pd.Series({
-            "N_total":    total,
-            "N_assigned": n_assigned,
-            "Assign_%":   round(n_assigned / total * 100, 1),
-            "N_hc":       n_hc,
-            "HC_%":       round(n_hc / total * 100, 1),
-            "N_harvest":  n_harvest,
-            "N_unassign": n_unassigned,
-        })
+        return pd.Series(
+            {
+                "N_total": total,
+                "N_assigned": n_assigned,
+                "Assign_%": round(n_assigned / total * 100, 1),
+                "N_hc": n_hc,
+                "HC_%": round(n_hc / total * 100, 1),
+                "N_harvest": n_harvest,
+                "N_unassign": n_unassigned,
+            }
+        )
 
     table = ca.groupby("isotope_id").apply(tier_stats).reset_index()
     print(table.to_string(index=False))
@@ -122,7 +150,9 @@ def print_energy_coverage(ca):
     print("Energy Coverage")
     print("=" * 60)
     bands = [(0, 5000), (5000, 10000), (10000, 15000)]
-    print(f"\n{'Band (cm-1)':<15} {'N_Ca':>8} {'Assigned':>10} {'Assign%':>9} {'HC':>8} {'HC%':>7}")
+    print(
+        f"\n{'Band (cm-1)':<15} {'N_Ca':>8} {'Assigned':>10} {'Assign%':>9} {'HC':>8} {'HC%':>7}"
+    )
     print("-" * 60)
     for emin, emax in bands:
         b = ca[(ca["energy"] >= emin) & (ca["energy"] < emax)]
@@ -136,14 +166,16 @@ def print_energy_coverage(ca):
         )
 
     print("\nNote: the vast majority of Ca states (82%) are in the 10-15k cm-1 range.")
-    print("Assignment rates decrease with energy, as expected for hard high-polyad states.")
+    print(
+        "Assignment rates decrease with energy, as expected for hard high-polyad states."
+    )
 
 
 def plot_isotopologue_breakdown(df, figure_dir=FIGURES_DIR):
     """Stacked bar per isotopologue showing MARVEL + Ca assignment tiers."""
     print("\nGenerating per-isotopologue assignment breakdown figure...")
 
-    MARVEL_COLOR = "#d4a017"   # amber — matches plotting.py
+    MARVEL_COLOR = "#d4a017"  # amber — matches plotting.py
 
     def get_tier(row):
         if row["is_marvel"]:
@@ -168,16 +200,14 @@ def plot_isotopologue_breakdown(df, figure_dir=FIGURES_DIR):
         "Unassigned",
     ]
     tier_colors = {
-        "MARVEL (Ground Truth)":                        MARVEL_COLOR,
-        tier_order[1]:                                  "#35b779",  # green
-        tier_order[2]:                                  "#6ece58",  # light green
-        tier_order[3]:                                  "#31688e",  # blue
-        "Unassigned":                                   "#440154",  # purple
+        "MARVEL (Ground Truth)": MARVEL_COLOR,
+        tier_order[1]: "#35b779",  # green
+        tier_order[2]: "#6ece58",  # light green
+        tier_order[3]: "#31688e",  # blue
+        "Unassigned": "#440154",  # purple
     }
 
-    counts = (
-        df.groupby(["isotope_id", "Tier"]).size().unstack(fill_value=0)
-    )
+    counts = df.groupby(["isotope_id", "Tier"]).size().unstack(fill_value=0)
     for t in tier_order:
         if t not in counts.columns:
             counts[t] = 0
@@ -221,62 +251,21 @@ def plot_energy_assignment_density(ca, figure_dir=FIGURES_DIR):
     print("Generating energy coverage figure...")
 
     bins = np.arange(0, 15001, 500)
-
     assigned = ca[ca["pred_class_id"] != -1]
-    hc = assigned[assigned["assigned_margin"] >= CONFIDENT_THRESHOLD]
-    non_hc = assigned[assigned["assigned_margin"] < CONFIDENT_THRESHOLD]
-    unassigned = ca[ca["pred_class_id"] == -1]
 
-    fig, (ax_top, ax_bot) = plt.subplots(
-        2, 1, figsize=(13, 8), sharex=True,
-        gridspec_kw={"height_ratios": [2, 1]},
-    )
-
-    # Panel A: stacked histogram
-    counts_hc, _ = np.histogram(hc["energy"], bins=bins)
-    counts_non, _ = np.histogram(non_hc["energy"], bins=bins)
-    counts_un, _ = np.histogram(unassigned["energy"], bins=bins)
-
-    ax_top.bar(bins[:-1], counts_hc, width=500, align="edge",
-               color="#35b779", label=f"Highly Confident (≥ {CONFIDENT_THRESHOLD})", alpha=0.85)
-    ax_top.bar(bins[:-1], counts_non, width=500, align="edge",
-               bottom=counts_hc, color="#31688e", label="Other Assigned", alpha=0.85)
-    ax_top.bar(bins[:-1], counts_un, width=500, align="edge",
-               bottom=counts_hc + counts_non, color="#440154", label="Unassigned", alpha=0.7)
-
-    ax_top.set_ylabel("Number of Ca States")
-    ax_top.set_title(
-        "A  —  Ca State Assignment by Energy",
-        loc="left", fontweight="bold", fontsize=11,
-    )
-    ax_top.legend(loc="upper left")
-    ax_top.grid(axis="y", linestyle="--", alpha=0.4)
-
-    # Panel B: assignment rate
     total, _ = np.histogram(ca["energy"], bins=bins)
     assigned_counts, _ = np.histogram(assigned["energy"], bins=bins)
     with np.errstate(invalid="ignore", divide="ignore"):
         assign_rate = np.where(total > 0, assigned_counts / total * 100, np.nan)
 
-    ax_bot.bar(bins[:-1], assign_rate, width=500, align="edge",
-               color="#3498db", alpha=0.75)
-    ax_bot.axhline(50, color="#e74c3c", linestyle="--", linewidth=1.5, label="50% assignment")
-    ax_bot.set_xlabel("Energy (cm⁻¹)")
-    ax_bot.set_ylabel("Assignment Rate (%)")
-    ax_bot.set_title(
-        "B  —  Ca Assignment Rate vs. Energy",
-        loc="left", fontweight="bold", fontsize=11,
-    )
-    ax_bot.set_ylim(0, 105)
-    ax_bot.legend(loc="upper right")
-    ax_bot.grid(axis="y", linestyle="--", alpha=0.4)
+    fig, ax = plt.subplots(figsize=(13, 5))
+    ax.bar(bins[:-1], assign_rate, width=500, align="edge", color="#3498db", alpha=0.75)
+    ax.set_xlabel("Energy (cm⁻¹)")
+    ax.set_ylabel("Assignment Rate (%)")
+    ax.set_ylim(0, 105)
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
 
-    fig.suptitle(
-        "CO₂ Ca State Coverage — Post MARVEL Locking Fix",
-        fontsize=13, fontweight="bold",
-    )
     plt.tight_layout()
-
     save_path = os.path.join(figure_dir, "ca_coverage_energy.png")
     plt.savefig(save_path, dpi=200)
     plt.close()
@@ -291,26 +280,39 @@ def plot_unassigned_margin_distribution(unassigned, figure_dir=FIGURES_DIR):
     lm = unassigned["logit_margin"]
     ax.hist(lm, bins=80, color="#440154", alpha=0.75, edgecolor="black", linewidth=0.3)
     ax.axvline(
-        HARVEST_THRESHOLD, color="#e74c3c", linestyle="--", linewidth=2,
+        HARVEST_THRESHOLD,
+        color="#e74c3c",
+        linestyle="--",
+        linewidth=2,
         label=f"Harvest threshold = {HARVEST_THRESHOLD}",
     )
     ax.axvline(
-        CONFIDENT_THRESHOLD, color="#e67e22", linestyle="--", linewidth=2,
+        CONFIDENT_THRESHOLD,
+        color="#e67e22",
+        linestyle="--",
+        linewidth=2,
         label=f"Confident threshold = {CONFIDENT_THRESHOLD}",
     )
     ax.axvline(
-        lm.median(), color="white", linestyle="-", linewidth=1.5,
+        lm.median(),
+        color="white",
+        linestyle="-",
+        linewidth=1.5,
         label=f"Median = {lm.median():.2f}",
     )
 
     frac_above_harvest = (lm >= HARVEST_THRESHOLD).mean() * 100
     frac_above_conf = (lm >= CONFIDENT_THRESHOLD).mean() * 100
     ax.text(
-        0.97, 0.96,
+        0.97,
+        0.96,
         f"≥ {HARVEST_THRESHOLD} (harvest): {frac_above_harvest:.1f}%\n"
         f"≥ {CONFIDENT_THRESHOLD} (confident): {frac_above_conf:.1f}%\n"
         f"N = {len(lm):,}",
-        transform=ax.transAxes, ha="right", va="top", fontsize=11,
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=11,
         bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.85),
     )
 

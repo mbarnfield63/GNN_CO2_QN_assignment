@@ -319,11 +319,14 @@ def plot_mae_by_isotopologue(df_marvel, df_gnn, save_path):
 
 def plot_bv_spread_by_isotopologue(df_marvel, df_gnn, save_path):
     """
-    Three-group strip chart per isotopologue:
-      left  (blue)  — Ma-only bands (no GNN counterpart)
-      centre (green) — Ma+GNN matched bands (plotted at Ma B_v; GNN values are
-                       indistinguishable at this scale, confirming agreement)
-      right (orange) — GNN-only bands (new assignments with no MARVEL counterpart)
+    Three-group strip chart per isotopologue, stacked into two square panels
+    (top: 626-638, bottom: 727-838), sharing y-axis limits and one legend:
+      circles   (blue)   — Ma-only bands (no GNN counterpart)
+      triangles (green)  — Ma+GNN matched bands (plotted at Ma B_v; GNN values
+                           are indistinguishable at this scale, confirming
+                           agreement)
+      squares   (orange) — GNN-only bands (new assignments with no MARVEL
+                           counterpart)
     Horizontal ticks show the group median.
     """
     gnn_clean = df_gnn[df_gnn["rmse"] < RMSE_CLEAN]
@@ -342,97 +345,83 @@ def plot_bv_spread_by_isotopologue(df_marvel, df_gnn, save_path):
     gnn_only = gnn_only[gnn_only["_merge"] == "left_only"].drop(columns="_merge")
 
     iso_order = sorted(set(df_marvel["isotope_id"]) | set(gnn_clean["isotope_id"]))
+    mid = len(iso_order) // 2
+    panels = [iso_order[:mid], iso_order[mid:]]
 
-    fig, ax = plt.subplots(figsize=(14, 5))
     rng = np.random.default_rng(42)
     offsets = [-0.28, 0.0, 0.28]
     jitter_w = 0.07
     tick_hw = 0.10
 
     groups = [
-        (ma_only, "isotope_id", "B_v", "#3498db", "#1a6fa8"),
-        (matched, "isotope_id", "B_v_ma", "#2ecc71", "#1a9450"),
-        (gnn_only, "isotope_id", "B_v", "#e67e22", "#b85a00"),
+        (ma_only, "isotope_id", "B_v", "#3498db", "#1a6fa8", "o"),
+        (matched, "isotope_id", "B_v_ma", "#2ecc71", "#1a9450", "^"),
+        (gnn_only, "isotope_id", "B_v", "#e67e22", "#b85a00", "s"),
     ]
 
-    for (df_g, iso_col, bv_col, dot_col, med_col), off in zip(groups, offsets):
-        for i, iso in enumerate(iso_order):
-            vals = df_g[df_g[iso_col] == iso][bv_col].values
-            if not len(vals):
-                continue
-            jx = rng.uniform(-jitter_w, jitter_w, len(vals))
-            ax.scatter(
-                i + off + jx,
-                vals,
-                color=dot_col,
-                s=22,
-                alpha=0.75,
-                zorder=3,
-                linewidths=0,
-            )
-            ax.plot(
-                [i + off - tick_hw, i + off + tick_hw],
-                [np.median(vals)] * 2,
-                color=med_col,
-                linewidth=2.0,
-                zorder=4,
-            )
-
-    # Red circle annotation for the 727 (3,1,1,2) parity=1 outlier (J=104-119 misassignment)
-    outlier_mask = (
-        (gnn_only["isotope_id"] == 727)
-        & (gnn_only["m1"] == 3)
-        & (gnn_only["m2"] == 1)
-        & (gnn_only["m3"] == 1)
-        & (gnn_only["r"] == 2)
-        & (gnn_only["parity"] == 1)
+    all_vals = np.concatenate(
+        [df_g[bv_col].values for df_g, _, bv_col, *_ in groups]
     )
-    if outlier_mask.any() and 727 in iso_order:
-        out_bv = gnn_only.loc[outlier_mask, "B_v"].values[0]
-        out_xi = iso_order.index(727) + 0.28
-        ax.scatter(
-            [out_xi],
-            [out_bv],
-            marker="o",
-            facecolors="none",
-            edgecolors="red",
-            linewidths=1.5,
-            s=130,
-            zorder=5,
-        )
-        ax.text(
-            out_xi + 0.06,
-            out_bv - 0.0008,
-            r"$(3,1^{1},2)f$",
-            color="red",
-            fontsize=plt.rcParams["legend.fontsize"],
-            va="top",
-        )
+    pad = 0.05 * (all_vals.max() - all_vals.min())
+    y_lims = (all_vals.min() - pad, all_vals.max() + pad)
 
-    ax.set_xticks(range(len(iso_order)))
-    ax.set_xticklabels([str(iso) for iso in iso_order])
-    ax.set_xlabel("Isotopologue")
-    ax.set_ylabel(r"$B_v$ (cm$^{-1}$)")
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
+    fig, axes = plt.subplots(2, 1, figsize=(8, 8), sharex=False)
+
+    for ax, iso_subset in zip(axes, panels):
+        for (df_g, iso_col, bv_col, dot_col, med_col, marker), off in zip(
+            groups, offsets
+        ):
+            for i, iso in enumerate(iso_subset):
+                vals = df_g[df_g[iso_col] == iso][bv_col].values
+                if not len(vals):
+                    continue
+                jx = rng.uniform(-jitter_w, jitter_w, len(vals))
+                ax.scatter(
+                    i + off + jx,
+                    vals,
+                    marker=marker,
+                    color=dot_col,
+                    s=22,
+                    alpha=0.75,
+                    zorder=3,
+                    linewidths=0,
+                )
+                ax.plot(
+                    [i + off - tick_hw, i + off + tick_hw],
+                    [np.median(vals)] * 2,
+                    color=med_col,
+                    linewidth=2.0,
+                    zorder=4,
+                )
+
+        ax.set_xticks(range(len(iso_subset)))
+        ax.set_xticklabels([str(iso) for iso in iso_subset])
+        ax.set_xlabel("Isotopologue")
+        ax.set_ylabel(r"$B_v$ (cm$^{-1}$)")
+        ax.set_ylim(y_lims)
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     legend_items = [
-        ("#3498db", f"Ma only  ($N={len(ma_only)}$)"),
-        ("#2ecc71", f"Ma + GNN  ($N={len(matched)}$)"),
-        ("#e67e22", f"GNN only  ($N={len(gnn_only)}$)"),
+        ("#3498db", "o", f"Ma only  ($N={len(ma_only)}$)"),
+        ("#2ecc71", "^", f"Ma + GNN  ($N={len(matched)}$)"),
+        ("#e67e22", "s", f"GNN only  ($N={len(gnn_only)}$)"),
     ]
-    ax.legend(
+    fig.legend(
         handles=[
             plt.Line2D(
                 [0],
                 [0],
-                marker="o",
+                marker=marker,
                 color="w",
                 markerfacecolor=c,
                 markersize=7,
                 label=lbl,
             )
-            for c, lbl in legend_items
+            for c, marker, lbl in legend_items
         ],
+        loc="upper center",
+        ncol=3,
+        bbox_to_anchor=(0.5, 1.04),
         framealpha=0.9,
     )
 

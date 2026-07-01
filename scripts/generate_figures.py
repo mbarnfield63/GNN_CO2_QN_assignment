@@ -1,6 +1,9 @@
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
+)
 
 import pandas as pd
 import numpy as np
@@ -9,6 +12,7 @@ from plotting import (
     plot_energy_distribution,
     plot_polyad_ladders,
     plot_assignment_rate_by_energy,
+    plot_energy_coverage_by_generation,
     HARVEST_THRESHOLD,
     LBL_MARVEL,
     LBL_CONFIDENT,
@@ -60,4 +64,7 @@ if __name__ == "__main__":
     plot_energy_distribution(df, bin_size=1000)
     plot_polyad_ladders(df)
     plot_assignment_rate_by_energy(df)
+    plot_energy_coverage_by_generation(
+        df, os.path.join(PLOT_DIR, "energy_coverage_by_generation.png")
+    )
     print("All figures successfully saved.")

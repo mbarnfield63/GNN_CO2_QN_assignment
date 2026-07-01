@@ -29,9 +29,7 @@ def analyze_new_assignments():
         assigned_df["raw_class_id"] != assigned_df["pred_class_id"]
     )
 
-    confident_df = assigned_df[
-        assigned_df["assigned_prob"] >= PROB_THRESHOLD
-    ].copy()
+    confident_df = assigned_df[assigned_df["assigned_prob"] >= PROB_THRESHOLD].copy()
 
     low_confidence_df = assigned_df[
         assigned_df["assigned_prob"] < PROB_THRESHOLD

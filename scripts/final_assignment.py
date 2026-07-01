@@ -14,7 +14,14 @@ import time
 from tqdm import tqdm
 from scipy.optimize import linear_sum_assignment
 
-from train import load_and_prepare_data, evaluate_batched, train_model, decode_qn_cols, FEATURE_COLS
+from train import (
+    load_and_prepare_data,
+    evaluate_batched,
+    train_model,
+    decode_qn_cols,
+    FEATURE_COLS,
+    build_polyad_class_map,
+)
 from model import CO2AssignmentGNN
 
 DATA_DIR = "data"
@@ -26,11 +33,24 @@ DUMMY_PENALTY = (
 def evaluate_physical_assignment_relaxed(
     model, loader, device, num_nodes, df, mapping_df, scaler
 ):
-    """Enforces constraints with a dummy 'trash can' class for ghost states."""
+    """Enforces constraints with a dummy 'trash can' class for ghost states.
+
+    Cost matrix uses deterministic softmax probabilities (consistent with the
+    bootstrap loop and the assigned_prob confidence signal). MC Dropout is run
+    separately to populate the uncertainty signal columns needed for the AUROC
+    comparison analysis.
+    """
     model.eval()
 
-    print("\nCalculating epistemic uncertainty via MC Dropout...")
-    mean_probs, variance, mean_sample_entropy = model.mc_dropout_predict(
+    # Deterministic pass — drives the cost matrix and assigned_prob/assigned_margin
+    print("\nRunning deterministic inference pass for assignment...")
+    all_logits, det_probs = model.get_logits_and_probs(loader, device, num_nodes)
+    all_logits_cpu = all_logits.cpu().numpy()
+    det_probs_cpu = det_probs.cpu().numpy()
+
+    # MC Dropout pass — uncertainty signal columns only (not used for assignment)
+    print("Calculating epistemic uncertainty via MC Dropout...")
+    mean_probs_mc, variance, mean_sample_entropy = model.mc_dropout_predict(
         loader, device, num_nodes, num_samples=30
     )
 
@@ -39,21 +59,20 @@ def evaluate_physical_assignment_relaxed(
         ["m1", "m2", "m3", "r"]
     ].to_dict("index")
 
-    # Extract RAW predictions before the solver touches anything
+    # Extract RAW predictions (pre-solver, deterministic)
     print("Capturing raw neural network predictions...")
-    raw_class_indices = mean_probs.argmax(dim=1).cpu().numpy()
-
+    raw_class_indices = det_probs.argmax(dim=1).cpu().numpy()
     df["raw_class_id"] = raw_class_indices
     decode_qn_cols(df, "raw_class_id", class_to_quantum, "raw")
 
-    # Extract the variance specifically for the raw predicted class
+    # Raw logit margin (pre-solver)
+    sorted_logits = np.sort(all_logits_cpu, axis=1)
+    df["logit_margin"] = sorted_logits[:, -1] - sorted_logits[:, -2]
+
+    # MC Dropout uncertainty signals
     df["raw_variance"] = variance[np.arange(len(df)), raw_class_indices].cpu().numpy()
-
-    # Predictive entropy H(mean_probs) = -sum_c p̄_c log(p̄_c)
-    mc_pred_ent = -(mean_probs * torch.log(mean_probs + 1e-10)).sum(dim=1).numpy()
+    mc_pred_ent = -(mean_probs_mc * torch.log(mean_probs_mc + 1e-10)).sum(dim=1).numpy()
     df["mc_predictive_entropy"] = mc_pred_ent
-
-    # BALD (epistemic uncertainty) = H(mean) - mean H(samples)
     df["mc_bald"] = mc_pred_ent - mean_sample_entropy.numpy()
 
     print("Applying Relaxed Localized Hungarian Algorithm (per Isotope, J, Parity)...")
@@ -63,7 +82,7 @@ def evaluate_physical_assignment_relaxed(
 
     for _, group in tqdm(grouped, desc="Assigning Quantum States"):
         idx = group.index.values
-        block_probs = mean_probs[idx].cpu().numpy().copy()
+        block_probs = det_probs_cpu[idx].copy()  # deterministic probs drive assignment
         cost_matrix = 1.0 - block_probs
 
         N, M = cost_matrix.shape
@@ -87,7 +106,22 @@ def evaluate_physical_assignment_relaxed(
     df["pred_class_id"] = optimal_class_indices
     decode_qn_cols(df, "pred_class_id", class_to_quantum, "pred")
 
-    # Safely assign variance (use 1.0 for unassigned/dummy states)
+    # Post-solver assigned probability and logit margin (deterministic)
+    valid_mask_arr = optimal_class_indices >= 0
+    clipped_indices = np.clip(optimal_class_indices, 0, all_logits_cpu.shape[1] - 1)
+
+    assigned_logits = all_logits_cpu[np.arange(len(df)), clipped_indices]
+    competitor_logits = all_logits_cpu.copy()
+    competitor_logits[valid_mask_arr, optimal_class_indices[valid_mask_arr]] = -np.inf
+    runner_up_logits = competitor_logits.max(axis=1)
+    df["assigned_margin"] = np.where(
+        valid_mask_arr, assigned_logits - runner_up_logits, 0.0
+    )
+
+    assigned_probs_arr = det_probs_cpu[np.arange(len(df)), clipped_indices]
+    df["assigned_prob"] = np.where(valid_mask_arr, assigned_probs_arr, 0.0)
+
+    # MC variance for the assigned class (retained for uncertainty figure)
     df["assignment_variance"] = 1.0
     valid_indices = optimal_class_indices != -1
     if valid_indices.sum() > 0:
@@ -168,7 +202,15 @@ def main():
     )
 
     print(f"Training Deep Residual GNN on fully-bootstrapped Generation 5 data...")
-    train_model(model, train_loader, device, epochs=100, criterion=criterion, optimizer=optimizer, print_every=20)
+    train_model(
+        model,
+        train_loader,
+        device,
+        epochs=100,
+        criterion=criterion,
+        optimizer=optimizer,
+        print_every=20,
+    )
 
     test_acc = evaluate_batched(model, test_loader, device)
     print(f"\nFinal Training Complete. Base Test Top-1 Acc: {test_acc:.4f}")

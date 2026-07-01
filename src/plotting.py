@@ -466,18 +466,16 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
 
     # Each segment: (mask, label, color, hatch)
     segments = []
-    segments.append((marvel_mask, "MARVEL (Ground Truth)", colors[LBL_MARVEL], None))
-
-    UNASSIGNED_COLOR = "#c0c0c0"  # silver-gray — outside viridis scale
+    segments.append((marvel_mask, "MARVEL (Ground Truth)", colors[LBL_MARVEL], "///"))
 
     if has_pred:
         ca_gen0_mask = (
             (~df["is_marvel"])
             & (df["assignment_generation"] == 0)
             & (df["pred_class_id"] >= 0)
+            & (df["assigned_prob"] >= HARVEST_THRESHOLD)
         )
-        # Hatched to signal "initial GNN inference, not yet bootstrapped"
-        segments.append((ca_gen0_mask, "GNN Initial (Gen 0)", "#b5cf6b", "///"))
+        segments.append((ca_gen0_mask, "GNN Initial (Gen 0)", "#b5cf6b", None))
 
         max_gen = int(df.loc[~df["is_marvel"], "assignment_generation"].max())
         for g in range(1, max_gen + 1):
@@ -494,10 +492,6 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
                     None,
                 )
             )
-
-        # Unassigned Ca on top — outside viridis scale
-        unassigned_mask = (~df["is_marvel"]) & (df["pred_class_id"] < 0)
-        segments.append((unassigned_mask, "Unassigned", UNASSIGNED_COLOR, None))
     else:
         print("  Warning: pred_class_id not found; only MARVEL states will be shown.")
 
@@ -508,7 +502,6 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     bottoms = np.zeros(len(bins) - 1)
     for mask, label, color, hatch in segments:
         counts, _ = np.histogram(df.loc[mask, "energy"], bins=bins)
-        ec = "black" if hatch else "none"
         ax_main.bar(
             bins[:-1],
             counts,
@@ -518,7 +511,7 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
             label=label,
             alpha=0.85,
             align="edge",
-            edgecolor=ec,
+            edgecolor="black",
             linewidth=0.4,
             hatch=hatch,
         )

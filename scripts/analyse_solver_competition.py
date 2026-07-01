@@ -61,15 +61,14 @@ def _load_data():
     mapping_lookup = mapping.set_index(["m1", "m2", "m3", "r"])["class_id"]
     marvel_mask = df["is_marvel"]
     afgl_keys = df.loc[marvel_mask, ["AFGL_m1", "AFGL_m2", "AFGL_m3", "AFGL_r"]]
-    df.loc[marvel_mask, "AFGL_class_id"] = (
-        afgl_keys.apply(lambda r: mapping_lookup.get((r.iloc[0], r.iloc[1], r.iloc[2], r.iloc[3]), -1), axis=1).values
-    )
+    df.loc[marvel_mask, "AFGL_class_id"] = afgl_keys.apply(
+        lambda r: mapping_lookup.get((r.iloc[0], r.iloc[1], r.iloc[2], r.iloc[3]), -1),
+        axis=1,
+    ).values
     df["AFGL_class_id"] = df["AFGL_class_id"].fillna(-1).astype(int)
 
     # Correctness flags (meaningful only for MARVEL test states)
-    df["is_correct_raw"] = (
-        marvel_mask & (df["raw_class_id"] == df["AFGL_class_id"])
-    )
+    df["is_correct_raw"] = marvel_mask & (df["raw_class_id"] == df["AFGL_class_id"])
     df["is_correct_post"] = (
         marvel_mask
         & (df["AFGL_m1"] == df["pred_m1"])
@@ -124,29 +123,33 @@ def _find_conflict_winners(df):
             # loc can return Series (1 match) or DataFrame (multiple); take first
             if isinstance(winner, pd.DataFrame):
                 winner = winner.iloc[0]
-            records.append({
-                "test_node_id": row["node_id"],
-                "winner_node_id": winner["node_id"],
-                "winner_type": winner["state_type"],
-                "winner_gen": int(winner.get("assignment_generation", 0)),
-                "loser_logit_margin": float(row["logit_margin"]),
-                "winner_logit_margin": float(winner["logit_margin"]),
-                "polyad_int": int(row["polyad_int"]),
-                "test_raw_correct": bool(row["is_correct_raw"]),
-                "matched": True,
-            })
+            records.append(
+                {
+                    "test_node_id": row["node_id"],
+                    "winner_node_id": winner["node_id"],
+                    "winner_type": winner["state_type"],
+                    "winner_gen": int(winner.get("assignment_generation", 0)),
+                    "loser_logit_margin": float(row["logit_margin"]),
+                    "winner_logit_margin": float(winner["logit_margin"]),
+                    "polyad_int": int(row["polyad_int"]),
+                    "test_raw_correct": bool(row["is_correct_raw"]),
+                    "matched": True,
+                }
+            )
         else:
-            records.append({
-                "test_node_id": row["node_id"],
-                "winner_node_id": -1,
-                "winner_type": "unmatched",
-                "winner_gen": -1,
-                "loser_logit_margin": float(row["logit_margin"]),
-                "winner_logit_margin": float("nan"),
-                "polyad_int": int(row["polyad_int"]),
-                "test_raw_correct": bool(row["is_correct_raw"]),
-                "matched": False,
-            })
+            records.append(
+                {
+                    "test_node_id": row["node_id"],
+                    "winner_node_id": -1,
+                    "winner_type": "unmatched",
+                    "winner_gen": -1,
+                    "loser_logit_margin": float(row["logit_margin"]),
+                    "winner_logit_margin": float("nan"),
+                    "polyad_int": int(row["polyad_int"]),
+                    "test_raw_correct": bool(row["is_correct_raw"]),
+                    "matched": False,
+                }
+            )
 
     return pd.DataFrame(records)
 
@@ -173,29 +176,47 @@ def analyse_competition(df, winners):
 
     winner_counts = matched["winner_type"].value_counts()
     print(f"\n--- Winner Type Breakdown (N={n_matched} matched conflicts) ---")
-    print(f"{'Winner Type':<22} {'N wins':>8} {'% of wins':>10} {'N states (total)':>18} {'Wins per 1k states':>20}")
+    print(
+        f"{'Winner Type':<22} {'N wins':>8} {'% of wins':>10} {'N states (total)':>18} {'Wins per 1k states':>20}"
+    )
     for wtype, n_wins in winner_counts.items():
         n_total_that_type = type_counts_full.get(wtype, 0)
-        per_1k = (n_wins / n_total_that_type * 1000) if n_total_that_type > 0 else float("nan")
-        print(f"  {wtype:<20} {n_wins:>8,} {n_wins/n_matched*100:>9.1f}% {n_total_that_type:>18,} {per_1k:>19.2f}")
+        per_1k = (
+            (n_wins / n_total_that_type * 1000)
+            if n_total_that_type > 0
+            else float("nan")
+        )
+        print(
+            f"  {wtype:<20} {n_wins:>8,} {n_wins/n_matched*100:>9.1f}% {n_total_that_type:>18,} {per_1k:>19.2f}"
+        )
 
     # ── Table B: Logit margin of winners by generation ───────────────────────
     ca_winners = matched[matched["winner_type"].str.startswith("ca_gen")].copy()
     if len(ca_winners) > 0:
         print(f"\n--- Ca Winner Logit Margins by Generation ---")
-        print(f"{'Gen':<10} {'N wins':>8} {'Mean margin':>13} {'Median':>8} {'P25':>6} {'P75':>6}")
+        print(
+            f"{'Gen':<10} {'N wins':>8} {'Mean margin':>13} {'Median':>8} {'P25':>6} {'P75':>6}"
+        )
         for gen_type in sorted(ca_winners["winner_type"].unique()):
             sub = ca_winners[ca_winners["winner_type"] == gen_type]
             m = sub["winner_logit_margin"]
-            print(f"  {gen_type:<8} {len(sub):>8,} {m.mean():>13.3f} {m.median():>8.3f} {m.quantile(0.25):>6.3f} {m.quantile(0.75):>6.3f}")
+            print(
+                f"  {gen_type:<8} {len(sub):>8,} {m.mean():>13.3f} {m.median():>8.3f} {m.quantile(0.25):>6.3f} {m.quantile(0.75):>6.3f}"
+            )
 
     # ── Margin delta: winner - loser ─────────────────────────────────────────
-    matched["margin_delta"] = matched["winner_logit_margin"] - matched["loser_logit_margin"]
+    matched["margin_delta"] = (
+        matched["winner_logit_margin"] - matched["loser_logit_margin"]
+    )
     print(f"\n--- Margin Delta: Winner minus Loser logit_margin ---")
     print(f"  Mean delta:   {matched['margin_delta'].mean():.3f}")
     print(f"  Median delta: {matched['margin_delta'].median():.3f}")
-    print(f"  Delta > 0 (winner more confident): {(matched['margin_delta'] > 0).mean()*100:.1f}%")
-    print(f"  Delta < 0 (loser was more confident): {(matched['margin_delta'] < 0).mean()*100:.1f}%")
+    print(
+        f"  Delta > 0 (winner more confident): {(matched['margin_delta'] > 0).mean()*100:.1f}%"
+    )
+    print(
+        f"  Delta < 0 (loser was more confident): {(matched['margin_delta'] < 0).mean()*100:.1f}%"
+    )
 
     # Stratify delta by winner generation
     print(f"\n  Margin delta by winner generation:")
@@ -203,7 +224,9 @@ def analyse_competition(df, winners):
         sub = matched[matched["winner_type"] == gen_type]
         d = sub["margin_delta"]
         pct_pos = (d > 0).mean() * 100
-        print(f"    {gen_type:<22} mean={d.mean():+.3f}  pct_pos={pct_pos:.1f}%  n={len(sub)}")
+        print(
+            f"    {gen_type:<22} mean={d.mean():+.3f}  pct_pos={pct_pos:.1f}%  n={len(sub)}"
+        )
 
     return matched
 
@@ -218,15 +241,23 @@ def analyse_degradation(df, winners):
     print(f"\n{'='*70}")
     print("=== SOLVER DEGRADATION DIAGNOSIS ===")
     print(f"{'='*70}")
-    print(f"Raw-correct test states:    {total_raw_correct:,} / {total_test:,} ({total_raw_correct/total_test*100:.2f}%)")
-    print(f"Degraded (raw-ok, post-no): {len(degraded):,} ({len(degraded)/total_test*100:.2f}% of test set)")
-    print(f"  = {len(degraded)/total_raw_correct*100:.2f}% of raw-correct states were degraded by the solver")
+    print(
+        f"Raw-correct test states:    {total_raw_correct:,} / {total_test:,} ({total_raw_correct/total_test*100:.2f}%)"
+    )
+    print(
+        f"Degraded (raw-ok, post-no): {len(degraded):,} ({len(degraded)/total_test*100:.2f}% of test set)"
+    )
+    print(
+        f"  = {len(degraded)/total_raw_correct*100:.2f}% of raw-correct states were degraded by the solver"
+    )
 
     # By polyad
     print(f"\n--- Degraded States by Polyad (top 10) ---")
     poly_counts = degraded["polyad_int"].value_counts().head(10)
     poly_total = test_df.groupby("polyad_int")["is_correct_raw"].sum()
-    print(f"{'Polyad':>8} {'Degraded':>10} {'Raw-correct in polyad':>22} {'Degradation rate':>18}")
+    print(
+        f"{'Polyad':>8} {'Degraded':>10} {'Raw-correct in polyad':>22} {'Degradation rate':>18}"
+    )
     for polyad, n_deg in poly_counts.items():
         n_raw_corr = poly_total.get(polyad, 0)
         rate = n_deg / n_raw_corr * 100 if n_raw_corr > 0 else float("nan")
@@ -243,7 +274,10 @@ def analyse_degradation(df, winners):
         for wtype, cnt in degraded_winners["winner_type"].value_counts().items():
             print(f"  {wtype:<25} {cnt:>5,} ({cnt/len(degraded_winners)*100:.1f}%)")
 
-        deg_delta = degraded_winners["winner_logit_margin"] - degraded_winners["loser_logit_margin"]
+        deg_delta = (
+            degraded_winners["winner_logit_margin"]
+            - degraded_winners["loser_logit_margin"]
+        )
         print(f"\n  Margin delta (winner minus degraded loser):")
         print(f"    Mean:   {deg_delta.mean():+.3f}")
         print(f"    Median: {deg_delta.median():+.3f}")
@@ -263,27 +297,50 @@ def plot_competition(df, matched):
 
     bars = ax1.barh(labels, fracs, color=colors, alpha=0.85, edgecolor="white")
     for bar, pct in zip(bars, fracs):
-        ax1.text(bar.get_width() + 0.3, bar.get_y() + bar.get_height() / 2,
-                 f"{pct:.1f}%", va="center", fontsize=9)
+        ax1.text(
+            bar.get_width() + 0.3,
+            bar.get_y() + bar.get_height() / 2,
+            f"{pct:.1f}%",
+            va="center",
+            fontsize=9,
+        )
     ax1.set_xlabel("% of matched conflicts")
-    ax1.set_title("Conflict Winner Breakdown\n(who displaced MARVEL test state)", fontweight="bold")
+    ax1.set_title(
+        "Conflict Winner Breakdown\n(who displaced MARVEL test state)",
+        fontweight="bold",
+    )
     ax1.set_xlim(0, max(fracs) + 12)
     ax1.grid(axis="x", linestyle="--", alpha=0.4)
     ax1.invert_yaxis()
 
     # ── Panel B: Logit margin box plots by winner type ────────────────────────
-    types_present = [t for t in [
-        "marvel_train", "marvel_val",
-        "ca_gen_1", "ca_gen_2", "ca_gen_3", "ca_gen_4", "ca_gen_5",
-    ] if t in matched["winner_type"].values]
+    types_present = [
+        t
+        for t in [
+            "marvel_train",
+            "marvel_val",
+            "ca_gen_1",
+            "ca_gen_2",
+            "ca_gen_3",
+            "ca_gen_4",
+            "ca_gen_5",
+        ]
+        if t in matched["winner_type"].values
+    ]
 
-    data_by_type = [matched.loc[matched["winner_type"] == t, "winner_logit_margin"].values
-                    for t in types_present]
+    data_by_type = [
+        matched.loc[matched["winner_type"] == t, "winner_logit_margin"].values
+        for t in types_present
+    ]
     box_labels = [GEN_LABELS.get(t, t) for t in types_present]
     box_colors = [GEN_COLORS.get(t, "#95a5a6") for t in types_present]
 
-    bp = ax2.boxplot(data_by_type, patch_artist=True, vert=True,
-                     medianprops={"color": "black", "linewidth": 2})
+    bp = ax2.boxplot(
+        data_by_type,
+        patch_artist=True,
+        vert=True,
+        medianprops={"color": "black", "linewidth": 2},
+    )
     for patch, color in zip(bp["boxes"], box_colors):
         patch.set_facecolor(color)
         patch.set_alpha(0.75)
@@ -291,18 +348,27 @@ def plot_competition(df, matched):
     ax2.set_xticks(range(1, len(box_labels) + 1))
     ax2.set_xticklabels(box_labels, rotation=30, ha="right", fontsize=9)
     ax2.set_ylabel("logit_margin (pre-solver confidence)")
-    ax2.set_title("Winner Pre-Solver Confidence by Type\n(higher = more dominant in block)", fontweight="bold")
+    ax2.set_title(
+        "Winner Pre-Solver Confidence by Type\n(higher = more dominant in block)",
+        fontweight="bold",
+    )
     ax2.grid(axis="y", linestyle="--", alpha=0.4)
 
     # Add reference line: median loser margin
     loser_median = matched["loser_logit_margin"].median()
-    ax2.axhline(loser_median, color="steelblue", linestyle="--", linewidth=1.5,
-                label=f"Loser median ({loser_median:.2f})")
+    ax2.axhline(
+        loser_median,
+        color="steelblue",
+        linestyle="--",
+        linewidth=1.5,
+        label=f"Loser median ({loser_median:.2f})",
+    )
     ax2.legend(fontsize=9)
 
     fig.suptitle(
         "Solver Competition Asymmetry — MARVEL Test State Conflict Winners",
-        fontsize=12, fontweight="bold",
+        fontsize=12,
+        fontweight="bold",
     )
     plt.tight_layout()
     os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -327,13 +393,18 @@ def plot_degradation(df, degraded, degraded_winners):
     raw_vals = [int(poly_raw.get(p, 0)) for p in polyads]
     deg_vals = [int(poly_all.get(p, 0)) for p in polyads]
 
-    ax1.bar(x - w/2, raw_vals, w, label="Raw-correct", color="#2ecc71", alpha=0.7)
-    ax1.bar(x + w/2, deg_vals, w, label="Degraded by solver", color="#e74c3c", alpha=0.7)
+    ax1.bar(x - w / 2, raw_vals, w, label="Raw-correct", color="#2ecc71", alpha=0.7)
+    ax1.bar(
+        x + w / 2, deg_vals, w, label="Degraded by solver", color="#e74c3c", alpha=0.7
+    )
     ax1.set_xticks(x)
     ax1.set_xticklabels([str(p) for p in polyads])
     ax1.set_xlabel("Polyad")
     ax1.set_ylabel("Count")
-    ax1.set_title("Raw-correct vs Solver-degraded States\nby Polyad (MARVEL test set)", fontweight="bold")
+    ax1.set_title(
+        "Raw-correct vs Solver-degraded States\nby Polyad (MARVEL test set)",
+        fontweight="bold",
+    )
     ax1.legend()
     ax1.grid(axis="y", linestyle="--", alpha=0.4)
 
@@ -353,7 +424,9 @@ def plot_degradation(df, degraded, degraded_winners):
             pc.set_facecolor(col)
             pc.set_alpha(0.7)
         ax2.set_xticks([1, 2])
-        ax2.set_xticklabels(["Degraded test state\n(loser)", "Winning state\n(displaced it)"])
+        ax2.set_xticklabels(
+            ["Degraded test state\n(loser)", "Winning state\n(displaced it)"]
+        )
         ax2.set_ylabel("logit_margin (pre-solver)")
         ax2.set_title(
             f"Pre-solver Confidence: Degraded vs Winner\n(n={len(degraded_winners)} cases)",
@@ -362,16 +435,28 @@ def plot_degradation(df, degraded, degraded_winners):
         ax2.grid(axis="y", linestyle="--", alpha=0.4)
 
         # Annotate medians
-        for pos, vals, col in [(1, loser_margins, "#3498db"), (2, winner_margins, "#e74c3c")]:
+        for pos, vals, col in [
+            (1, loser_margins, "#3498db"),
+            (2, winner_margins, "#e74c3c"),
+        ]:
             med = np.median(vals)
-            ax2.text(pos, med + 0.05, f"med={med:.2f}", ha="center", fontsize=9, color=col)
+            ax2.text(
+                pos, med + 0.05, f"med={med:.2f}", ha="center", fontsize=9, color=col
+            )
     else:
-        ax2.text(0.5, 0.5, "No degraded winners found", ha="center", va="center",
-                 transform=ax2.transAxes)
+        ax2.text(
+            0.5,
+            0.5,
+            "No degraded winners found",
+            ha="center",
+            va="center",
+            transform=ax2.transAxes,
+        )
 
     fig.suptitle(
         "Solver Degradation Diagnosis — Raw-correct → Post-solver-wrong",
-        fontsize=12, fontweight="bold",
+        fontsize=12,
+        fontweight="bold",
     )
     plt.tight_layout()
     save_path = os.path.join(FIGURES_DIR, "solver_degradation.png")

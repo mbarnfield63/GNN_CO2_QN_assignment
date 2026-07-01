@@ -14,7 +14,13 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from graph_builder import build_pyg_graph
 from model import CO2AssignmentGNN, FocalLoss
 
-from config import DATA_DIR, UNIFIED_DATASET_PATH, CLASS_MAPPING_PATH, GRAPH_CACHE_PATH, PREDICTIONS_PATH
+from config import (
+    DATA_DIR,
+    UNIFIED_DATASET_PATH,
+    CLASS_MAPPING_PATH,
+    GRAPH_CACHE_PATH,
+    PREDICTIONS_PATH,
+)
 
 FEATURE_COLS = [
     "energy",
@@ -73,7 +79,11 @@ def export_run_metrics(final_df, data_dir="data"):
         & (test_df["AFGL_r"] == test_df["pred_r"])
     )
 
-    current_gen = int(final_df["assignment_generation"].max()) if "assignment_generation" in final_df.columns else 0
+    current_gen = (
+        int(final_df["assignment_generation"].max())
+        if "assignment_generation" in final_df.columns
+        else 0
+    )
     n_assigned = int((final_df["pred_class_id"] >= 0).sum())
     n_total = len(final_df)
 
@@ -84,7 +94,10 @@ def export_run_metrics(final_df, data_dir="data"):
         n_harvested = 0
     else:
         n_harvested = int(
-            ((~final_df["is_marvel"]) & (final_df["assignment_generation"] == current_gen)).sum()
+            (
+                (~final_df["is_marvel"])
+                & (final_df["assignment_generation"] == current_gen)
+            ).sum()
         )
 
     # Median assigned_prob over all Ca states assigned in this run (pred_class_id >= 0).
@@ -205,7 +218,9 @@ def evaluate_batched(model, loader, device):
     return correct / total if total > 0 else 0.0
 
 
-def build_polyad_class_map(df, margin_threshold=0.0):  # margin_threshold is prob-scale since bootstrap.py uses locked_prob
+def build_polyad_class_map(
+    df, margin_threshold=0.0
+):  # margin_threshold is prob-scale since bootstrap.py uses locked_prob
     """
     Build polyad -> valid class_ids from MARVEL states, optionally extended
     by high-confidence bootstrapped predictions for sparse high-energy polyads.
@@ -223,9 +238,7 @@ def build_polyad_class_map(df, margin_threshold=0.0):  # margin_threshold is pro
 
     # Extend from bootstrapped generations if available
     if "assignment_generation" in df.columns and margin_threshold > 0:
-        prob_col = (
-            "locked_prob" if "locked_prob" in df.columns else "locked_margin"
-        )
+        prob_col = "locked_prob" if "locked_prob" in df.columns else "locked_margin"
 
         confident = df[
             (df["assignment_generation"] > 0)
@@ -454,7 +467,9 @@ def main():
 
     print("\nInitializing GPU Mini-Batching (NeighborLoader)...")
     loader_kw = dict(data=data, num_neighbors=[15, 10], batch_size=2048)
-    train_loader = NeighborLoader(**loader_kw, input_nodes=data.train_mask, shuffle=True)
+    train_loader = NeighborLoader(
+        **loader_kw, input_nodes=data.train_mask, shuffle=True
+    )
     val_loader = NeighborLoader(**loader_kw, input_nodes=data.val_mask, shuffle=False)
     test_loader = NeighborLoader(**loader_kw, input_nodes=data.test_mask, shuffle=False)
 

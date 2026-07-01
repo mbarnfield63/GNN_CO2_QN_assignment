@@ -4,7 +4,13 @@ import json
 import pandas as pd
 import time
 
-from config import DATA_DIR, UNIFIED_DATASET_PATH, PREDICTIONS_PATH, GRAPH_CACHE_PATH, BOOTSTRAP_METRICS_PATH
+from config import (
+    DATA_DIR,
+    UNIFIED_DATASET_PATH,
+    PREDICTIONS_PATH,
+    GRAPH_CACHE_PATH,
+    BOOTSTRAP_METRICS_PATH,
+)
 from plotting import (
     plot_assignment_rate_by_energy,
     plot_bootstrap_margin_gain,
@@ -54,14 +60,20 @@ def _reset_dataset():
 
     df = pd.read_csv(UNIFIED_DATASET_PATH)
 
-    gen_col = df["assignment_generation"] if "assignment_generation" in df.columns else pd.Series(0, index=df.index)
+    gen_col = (
+        df["assignment_generation"]
+        if "assignment_generation" in df.columns
+        else pd.Series(0, index=df.index)
+    )
     ca_bootstrapped = (~df["is_marvel"]) & (gen_col > 0)
     n_to_reset = ca_bootstrapped.sum()
 
     if n_to_reset == 0:
         print("Dataset already clean — no bootstrapped Ca states to reset.")
     else:
-        print(f"Resetting {n_to_reset:,} bootstrapped Ca states to pre-pipeline defaults...")
+        print(
+            f"Resetting {n_to_reset:,} bootstrapped Ca states to pre-pipeline defaults..."
+        )
         df.loc[ca_bootstrapped, "assignment_generation"] = 0
         df.loc[ca_bootstrapped, "train_mask"] = False
         df.loc[ca_bootstrapped, "combinatorial_class_id"] = -1
@@ -186,8 +198,12 @@ def main():
         summary_df = pd.DataFrame(metrics_history)
         if os.path.exists(BOOTSTRAP_METRICS_PATH):
             with open(BOOTSTRAP_METRICS_PATH) as f:
-                boot_records = {r["generation"]: r["n_r_corrections"] for r in json.load(f)}
-            summary_df["n_r_corrections"] = summary_df["generation"].map(boot_records).fillna(0).astype(int)
+                boot_records = {
+                    r["generation"]: r["n_r_excluded"] for r in json.load(f)
+                }
+            summary_df["n_r_excluded"] = (
+                summary_df["generation"].map(boot_records).fillna(0).astype(int)
+            )
         summary_df.to_csv(SUMMARY_PATH, index=False)
 
         print("\n--- Pipeline Summary ---")

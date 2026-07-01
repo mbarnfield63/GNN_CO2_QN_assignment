@@ -159,12 +159,17 @@ def create_unified_dataset():
 
     # 4. Apply mapping to the full dataset (Ca rows have AFGL cols == -1 → no match → -1)
     cls_str_col = (
-        full_df["AFGL_m1"].astype(int).astype(str) + "_"
-        + full_df["AFGL_m2"].astype(int).astype(str) + "_"
-        + full_df["AFGL_m3"].astype(int).astype(str) + "_"
+        full_df["AFGL_m1"].astype(int).astype(str)
+        + "_"
+        + full_df["AFGL_m2"].astype(int).astype(str)
+        + "_"
+        + full_df["AFGL_m3"].astype(int).astype(str)
+        + "_"
         + full_df["AFGL_r"].astype(int).astype(str)
     )
-    full_df["combinatorial_class_id"] = cls_str_col.map(class_to_id).fillna(-1).astype(int)
+    full_df["combinatorial_class_id"] = (
+        cls_str_col.map(class_to_id).fillna(-1).astype(int)
+    )
 
     # 5. Create Stratified Masks for Transductive Learning
     marvel_idx = full_df[full_df["is_marvel"]].index
