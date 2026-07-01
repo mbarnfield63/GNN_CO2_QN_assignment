@@ -451,10 +451,15 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     """
     Stacked histogram showing which energy range each bootstrap generation covers.
 
-    Expects df_preds (assigned_co2_predictions.csv) which has both pred_class_id
-    and assignment_generation. Generation 0 Ca is hatched to distinguish it as the
-    initial GNN pass (not a bootstrapped generation). Unassigned Ca states are shown
-    on top in a colour outside the viridis scale.
+    Expects df_preds (assigned_co2_predictions.csv), the output of the *final*
+    train.py run after the bootstrap loop ends, which has both pred_class_id and
+    assignment_generation. Bars are stacked in provenance order (MARVEL, then Gens
+    1-N as promoted), with one exception: states that were never promoted in any
+    cycle (assignment_generation == 0) but are nonetheless confidently assigned
+    (assigned_prob >= HARVEST_THRESHOLD) by that final model are stacked last, since
+    that status is only knowable from the final pass, not from pipeline chronology.
+    States with no confident final-pass assignment at all are not shown; the total
+    bar height is therefore the confidently-assigned population, not the full Ca set.
     """
     print("Generating Energy Coverage by Generation Plot...")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -464,19 +469,12 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     marvel_mask = df["is_marvel"]
     has_pred = "pred_class_id" in df.columns
 
-    # Each segment: (mask, label, color, hatch)
+    # Each segment (bottom to top): (mask, label, hatch) — colours assigned below,
+    # as a plain viridis gradient over stack position, light at bottom to dark at top.
     segments = []
-    segments.append((marvel_mask, "MARVEL (Ground Truth)", colors[LBL_MARVEL], "///"))
+    segments.append((marvel_mask, "MARVEL (Ground Truth)", "///"))
 
     if has_pred:
-        ca_gen0_mask = (
-            (~df["is_marvel"])
-            & (df["assignment_generation"] == 0)
-            & (df["pred_class_id"] >= 0)
-            & (df["assigned_prob"] >= HARVEST_THRESHOLD)
-        )
-        segments.append((ca_gen0_mask, "GNN Initial (Gen 0)", "#b5cf6b", None))
-
         max_gen = int(df.loc[~df["is_marvel"], "assignment_generation"].max())
         for g in range(1, max_gen + 1):
             ca_gen_mask = (
@@ -484,16 +482,27 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
                 & (df["assignment_generation"] == g)
                 & (df["pred_class_id"] >= 0)
             )
-            segments.append(
-                (
-                    ca_gen_mask,
-                    f"Bootstrap Gen {g}",
-                    GEN_COLORS.get(g, GEN_COLORS[5]),
-                    None,
-                )
-            )
+            segments.append((ca_gen_mask, f"Bootstrap Gen {g}", None))
+
+        ca_unpromoted_mask = (
+            (~df["is_marvel"])
+            & (df["assignment_generation"] == 0)
+            & (df["pred_class_id"] >= 0)
+            & (df["assigned_prob"] >= HARVEST_THRESHOLD)
+        )
+        segments.append((ca_unpromoted_mask, "Confident (Final Pass)", "..."))
     else:
         print("  Warning: pred_class_id not found; only MARVEL states will be shown.")
+
+    n_middle = len(segments) - 2
+    middle_gradient = plt.cm.viridis(np.linspace(0.9, 0.2, max(n_middle, 0)))
+    palette = (
+        ["khaki"] + list(middle_gradient) + ["darkorchid"]
+    )  # MARVEL, Gens, Confident
+    segments = [
+        (mask, label, palette[i], hatch)
+        for i, (mask, label, hatch) in enumerate(segments)
+    ]
 
     bins = np.arange(0, 15001, bin_size)
 
@@ -528,7 +537,9 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     print(f"Saved: {save_path}")
 
 
-def plot_assignment_rate_by_energy(df, save_path="data/figures/assignment_rate_by_energy.png"):
+def plot_assignment_rate_by_energy(
+    df, save_path="data/figures/assignment_rate_by_energy.png"
+):
     """
     Stacked area plot: Ca assignment rate vs energy, broken down by bootstrap generation.
 
@@ -549,12 +560,18 @@ def plot_assignment_rate_by_energy(df, save_path="data/figures/assignment_rate_b
 
     total_per_bin, _ = np.histogram(ca_df["energy"], bins=bins)
 
-    max_gen = int(ca_df["assignment_generation"].max()) if ("assignment_generation" in ca_df.columns and not ca_df.empty) else 0
+    max_gen = (
+        int(ca_df["assignment_generation"].max())
+        if ("assignment_generation" in ca_df.columns and not ca_df.empty)
+        else 0
+    )
 
     # Per-generation incremental counts (non-cumulative)
     gen_rates = []
     for g in range(max_gen + 1):
-        gen_mask = (ca_df["pred_class_id"] != -1) & (ca_df["assignment_generation"] == g)
+        gen_mask = (ca_df["pred_class_id"] != -1) & (
+            ca_df["assignment_generation"] == g
+        )
         gen_per_bin, _ = np.histogram(ca_df.loc[gen_mask, "energy"], bins=bins)
         rate = np.where(total_per_bin > 0, gen_per_bin / total_per_bin * 100.0, 0.0)
         gen_rates.append(rate)
@@ -565,15 +582,27 @@ def plot_assignment_rate_by_energy(df, save_path="data/figures/assignment_rate_b
     for g, rate in enumerate(gen_rates):
         label = "Gen 0 (unbootstrapped)" if g == 0 else f"Gen {g}"
         color = GEN_COLORS.get(g, GEN_COLORS[5])
-        ax.fill_between(bin_mids, bottom, bottom + rate, color=color, alpha=0.85, label=label)
+        ax.fill_between(
+            bin_mids, bottom, bottom + rate, color=color, alpha=0.85, label=label
+        )
         bottom += rate
 
     # Ceiling: total assigned (structurally fixed — does not change with bootstrapping)
     total_assigned_mask = ca_df["pred_class_id"] != -1
-    total_assigned_per_bin, _ = np.histogram(ca_df.loc[total_assigned_mask, "energy"], bins=bins)
-    ceiling = np.where(total_per_bin > 0, total_assigned_per_bin / total_per_bin * 100.0, np.nan)
-    ax.plot(bin_mids, ceiling, color="black", linestyle="--", linewidth=1.5,
-            label="Total assigned (structural ceiling)")
+    total_assigned_per_bin, _ = np.histogram(
+        ca_df.loc[total_assigned_mask, "energy"], bins=bins
+    )
+    ceiling = np.where(
+        total_per_bin > 0, total_assigned_per_bin / total_per_bin * 100.0, np.nan
+    )
+    ax.plot(
+        bin_mids,
+        ceiling,
+        color="black",
+        linestyle="--",
+        linewidth=1.5,
+        label="Total assigned (structural ceiling)",
+    )
 
     ax.set_xlabel("Energy (cm$^{-1}$)")
     ax.set_ylabel("Ca Assignment Rate (%)")
@@ -583,13 +612,17 @@ def plot_assignment_rate_by_energy(df, save_path="data/figures/assignment_rate_b
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     plt.tight_layout()
-    os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else ".", exist_ok=True)
+    os.makedirs(
+        os.path.dirname(save_path) if os.path.dirname(save_path) else ".", exist_ok=True
+    )
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Plot saved to {save_path}")
 
 
-def plot_bootstrap_margin_gain(df_preds, save_path="data/figures/bootstrap_margin_gain.png"):
+def plot_bootstrap_margin_gain(
+    df_preds, save_path="data/figures/bootstrap_margin_gain.png"
+):
     """
     Violin plot of assigned_margin by bootstrap cohort (assignment_generation).
 
@@ -618,13 +651,20 @@ def plot_bootstrap_margin_gain(df_preds, save_path="data/figures/bootstrap_margi
     data_by_gen = []
     labels = []
     for g in gens:
-        subset = ca_df.loc[ca_df["assignment_generation"] == g, "assigned_margin"].values
+        subset = ca_df.loc[
+            ca_df["assignment_generation"] == g, "assigned_margin"
+        ].values
         data_by_gen.append(subset)
         positions.append(g)
         labels.append("Gen 0\n(never\nbootstrapped)" if g == 0 else f"Gen {g}")
 
-    parts = ax.violinplot(data_by_gen, positions=positions, showmedians=True,
-                          showextrema=False, widths=0.7)
+    parts = ax.violinplot(
+        data_by_gen,
+        positions=positions,
+        showmedians=True,
+        showextrema=False,
+        widths=0.7,
+    )
 
     for i, (pc, g) in enumerate(zip(parts["bodies"], gens)):
         pc.set_facecolor(GEN_COLORS.get(g, GEN_COLORS[5]))
@@ -636,12 +676,20 @@ def plot_bootstrap_margin_gain(df_preds, save_path="data/figures/bootstrap_margi
     ax.set_xticklabels(labels, fontsize=11)
     ax.set_xlabel("Bootstrap Cohort")
     ax.set_ylabel("Assigned Logit Margin (final model)")
-    ax.axhline(1.0, color="red", linestyle=":", linewidth=1.5, label="Bootstrap threshold (1.0)")
+    ax.axhline(
+        1.0,
+        color="red",
+        linestyle=":",
+        linewidth=1.5,
+        label="Bootstrap threshold (1.0)",
+    )
     ax.legend(loc="upper left")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     plt.tight_layout()
-    os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else ".", exist_ok=True)
+    os.makedirs(
+        os.path.dirname(save_path) if os.path.dirname(save_path) else ".", exist_ok=True
+    )
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Plot saved to {save_path}")
