@@ -33,6 +33,9 @@ EXOMOL_COLUMNS = [
     "E_Ca",
 ]
 
+# TODO: tighten to 14906.56 (actual max MARVEL energy, see main.tex Sec. GraphSAGE Architecture note)
+# and rerun the full pipeline (uv run src/run_pipeline.py) to regenerate class_mapping.csv,
+# unified_co2_graph_data.csv, and all downstream predictions/figures.
 ENERGY_CUTOFF = 15000.0
 
 

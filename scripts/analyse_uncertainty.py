@@ -199,8 +199,8 @@ def plot_comparison(test_df, available_signals, auroc_by_col):
     nrows = min(3, math.ceil(n_sig / 2))
     fig, axes = plt.subplots(nrows, 2, figsize=(9, 4 * nrows), squeeze=False)
 
-    c_correct = "#2ecc71"
-    c_incorrect = "#e74c3c"
+    c_correct = "#009E73"  # Okabe-Ito bluish green
+    c_incorrect = "#D55E00"  # Okabe-Ito vermillion
 
     for col_idx, (col, label, higher, values) in enumerate(signals):
         ax = axes.flat[col_idx]
@@ -220,24 +220,32 @@ def plot_comparison(test_df, available_signals, auroc_by_col):
                 density,
                 width=np.diff(edges),
                 align="edge",
-                alpha=0.55,
+                alpha=0.75,
                 color=color,
                 label=lbl,
             )
+            if flag is correct:
+                ax.stairs(density, edges, color="black", linewidth=0.8, baseline=None)
 
         ax.text(
-            0.05,
+            0.95,
             0.95,
             f"{label}\nAUROC={auroc:.3f}",
             transform=ax.transAxes,
             va="top",
-            ha="left",
+            ha="right",
             fontsize=11,
             fontweight="bold",
         )
         ax.set_ylabel("Probability Density" if col_idx % 2 == 0 else "")
         ax.set_xlabel(col)
-        ax.legend(fontsize=9)
+        ax.legend(
+            fontsize=9,
+            loc="upper right",
+            bbox_to_anchor=(0.98, 0.78),
+            ncol=1,
+            framealpha=0.9,
+        )
         ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     # Hide unused axes

@@ -257,7 +257,7 @@ def plot_bv_scatter(df_marvel, df_gnn, save_path):
 
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(
-        merged["B_v_ma"], merged["B_v_gnn"], s=40, alpha=0.8, color="#2ecc71", zorder=3
+        merged["B_v_ma"], merged["B_v_gnn"], s=40, alpha=0.8, color="#e74c3c", zorder=3
     )
     lims = [
         merged[["B_v_ma", "B_v_gnn"]].min().min() - 0.001,
@@ -321,12 +321,12 @@ def plot_bv_spread_by_isotopologue(df_marvel, df_gnn, save_path):
     """
     Three-group strip chart per isotopologue, stacked into two square panels
     (top: 626-638, bottom: 727-838), sharing y-axis limits and one legend:
-      circles   (blue)   — Ma-only bands (no GNN counterpart)
-      triangles (green)  — Ma+GNN matched bands (plotted at Ma B_v; GNN values
-                           are indistinguishable at this scale, confirming
-                           agreement)
-      squares   (orange) — GNN-only bands (new assignments with no MARVEL
-                           counterpart)
+      circles   (orange)    — Ma-only bands (no GNN counterpart)
+      triangles (navy)      — Ma+GNN matched bands (plotted at Ma B_v; GNN values
+                              are indistinguishable at this scale, confirming
+                              agreement)
+      squares   (bluish green) — GNN-only bands (new assignments with no MARVEL
+                              counterpart)
     Horizontal ticks show the group median.
     """
     gnn_clean = df_gnn[df_gnn["rmse"] < RMSE_CLEAN]
@@ -353,10 +353,12 @@ def plot_bv_spread_by_isotopologue(df_marvel, df_gnn, save_path):
     jitter_w = 0.07
     tick_hw = 0.10
 
+    # Okabe-Ito orange/bluish-green for Ma-only/GNN-only, navy for Ma+GNN,
+    # each paired with a darker shade (blended 35% toward black) for the medians.
     groups = [
-        (ma_only, "isotope_id", "B_v", "#3498db", "#1a6fa8", "o"),
-        (matched, "isotope_id", "B_v_ma", "#2ecc71", "#1a9450", "^"),
-        (gnn_only, "isotope_id", "B_v", "#e67e22", "#b85a00", "s"),
+        (ma_only, "isotope_id", "B_v", "#E69F00", "#966700", "o"),
+        (matched, "isotope_id", "B_v_ma", "#000080", "#000053", "^"),
+        (gnn_only, "isotope_id", "B_v", "#009E73", "#00674B", "s"),
     ]
 
     all_vals = np.concatenate(
@@ -382,7 +384,7 @@ def plot_bv_spread_by_isotopologue(df_marvel, df_gnn, save_path):
                     marker=marker,
                     color=dot_col,
                     s=22,
-                    alpha=0.75,
+                    alpha=1.0,
                     zorder=3,
                     linewidths=0,
                 )
@@ -402,9 +404,9 @@ def plot_bv_spread_by_isotopologue(df_marvel, df_gnn, save_path):
         ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     legend_items = [
-        ("#3498db", "o", f"Ma only  ($N={len(ma_only)}$)"),
-        ("#2ecc71", "^", f"Ma + GNN  ($N={len(matched)}$)"),
-        ("#e67e22", "s", f"GNN only  ($N={len(gnn_only)}$)"),
+        ("#E69F00", "o", f"Ma only  ($N={len(ma_only)}$)"),
+        ("#000080", "^", f"Ma + GNN  ($N={len(matched)}$)"),
+        ("#009E73", "s", f"GNN only  ($N={len(gnn_only)}$)"),
     ]
     fig.legend(
         handles=[

@@ -259,7 +259,7 @@ def plot_energy_assignment_density(ca, figure_dir=FIGURES_DIR):
         assign_rate = np.where(total > 0, assigned_counts / total * 100, np.nan)
 
     fig, ax = plt.subplots(figsize=(13, 5))
-    ax.bar(bins[:-1], assign_rate, width=500, align="edge", color="#3498db", alpha=0.75)
+    ax.bar(bins[:-1], assign_rate, width=500, align="edge", color="#e74c3c", alpha=0.75)
     ax.set_xlabel("Energy (cm⁻¹)")
     ax.set_ylabel("Assignment Rate (%)")
     ax.set_ylim(0, 105)

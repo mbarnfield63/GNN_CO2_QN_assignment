@@ -469,10 +469,10 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     marvel_mask = df["is_marvel"]
     has_pred = "pred_class_id" in df.columns
 
-    # Each segment (bottom to top): (mask, label, hatch) — colours assigned below,
-    # as a plain viridis gradient over stack position, light at bottom to dark at top.
+    # Each segment (bottom to top): (mask, label) — colours assigned below
+    # from the Okabe-Ito palette, in order over stack position.
     segments = []
-    segments.append((marvel_mask, "MARVEL (Ground Truth)", "///"))
+    segments.append((marvel_mask, "MARVEL (Ground Truth)"))
 
     if has_pred:
         max_gen = int(df.loc[~df["is_marvel"], "assignment_generation"].max())
@@ -482,7 +482,7 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
                 & (df["assignment_generation"] == g)
                 & (df["pred_class_id"] >= 0)
             )
-            segments.append((ca_gen_mask, f"Bootstrap Gen {g}", None))
+            segments.append((ca_gen_mask, f"Bootstrap Gen {g}"))
 
         ca_unpromoted_mask = (
             (~df["is_marvel"])
@@ -490,18 +490,14 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
             & (df["pred_class_id"] >= 0)
             & (df["assigned_prob"] >= HARVEST_THRESHOLD)
         )
-        segments.append((ca_unpromoted_mask, "Confident (Final Pass)", "..."))
+        segments.append((ca_unpromoted_mask, "Confident (Final Pass)"))
     else:
         print("  Warning: pred_class_id not found; only MARVEL states will be shown.")
 
-    n_middle = len(segments) - 2
-    middle_gradient = plt.cm.viridis(np.linspace(0.9, 0.2, max(n_middle, 0)))
-    palette = (
-        ["khaki"] + list(middle_gradient) + ["darkorchid"]
-    )  # MARVEL, Gens, Confident
+    okabe_ito = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000"]
+    palette = [okabe_ito[i % len(okabe_ito)] for i in range(len(segments))]  # MARVEL, Gens, Confident
     segments = [
-        (mask, label, palette[i], hatch)
-        for i, (mask, label, hatch) in enumerate(segments)
+        (mask, label, palette[i]) for i, (mask, label) in enumerate(segments)
     ]
 
     bins = np.arange(0, 15001, bin_size)
@@ -509,7 +505,7 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
     fig, ax_main = plt.subplots(figsize=(10, 6))
 
     bottoms = np.zeros(len(bins) - 1)
-    for mask, label, color, hatch in segments:
+    for mask, label, color in segments:
         counts, _ = np.histogram(df.loc[mask, "energy"], bins=bins)
         ax_main.bar(
             bins[:-1],
@@ -521,8 +517,7 @@ def plot_energy_coverage_by_generation(df, save_path, bin_size=500):
             alpha=0.85,
             align="edge",
             edgecolor="black",
-            linewidth=0.4,
-            hatch=hatch,
+            linewidth=0.8,
         )
         bottoms += counts
 
