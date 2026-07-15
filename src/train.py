@@ -4,8 +4,8 @@ import numpy as np
 import time
 import torch
 import torch.nn as nn
-from torch_geometric.loader import NeighborLoader
 import os
+from torch_geometric.loader import NeighborLoader
 from tqdm import tqdm
 from scipy.optimize import linear_sum_assignment
 from sklearn.preprocessing import StandardScaler, LabelEncoder
@@ -164,30 +164,56 @@ def decode_qn_cols(df, id_col, class_to_quantum, prefix):
         )
 
 
+NUM_NEIGHBORS = [15, 10]
+BATCH_SIZE = 2048
+
+
 def train_model(model, data, device, epochs, criterion, optimizer, print_every=10):
-    # ponytail: full-batch; switch to NeighborLoader if GPU OOM
-    data = data.to(device)
+    # Mini-batched via NeighborLoader: full-batch forward+backward over the
+    # ~2.5M-node graph OOMs on both 8GB GPUs and large CPU RAM.
+    train_loader = NeighborLoader(
+        data,
+        num_neighbors=NUM_NEIGHBORS,
+        batch_size=BATCH_SIZE,
+        input_nodes=data.train_mask,
+        shuffle=True,
+    )
     for epoch in range(1, epochs + 1):
         model.train()
-        optimizer.zero_grad()
-        out = model(data.x, data.edge_index, data.iso_idx)
-        loss = criterion(out[data.train_mask], data.y[data.train_mask])
-        loss.backward()
-        optimizer.step()
+        total_loss, total_seeds = 0.0, 0
+        for batch in train_loader:
+            batch = batch.to(device)
+            optimizer.zero_grad()
+            out = model(batch.x, batch.edge_index, batch.iso_idx)
+            seed_out = out[: batch.batch_size]
+            seed_y = batch.y[: batch.batch_size]
+            loss = criterion(seed_out, seed_y)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * batch.batch_size
+            total_seeds += batch.batch_size
         if epoch % print_every == 0 or epoch == 1:
             val_acc = evaluate_batched(model, data, data.val_mask, device)
             print(
-                f"Epoch {epoch:03d} | Loss: {loss.item():.4f} | Val Top-1 Acc: {val_acc:.4f}"
+                f"Epoch {epoch:03d} | Loss: {total_loss / total_seeds:.4f} | Val Top-1 Acc: {val_acc:.4f}"
             )
 
 
 def evaluate_batched(model, data, mask, device):
     model.eval()
-    data = data.to(device)
+    loader = NeighborLoader(
+        data, num_neighbors=NUM_NEIGHBORS, batch_size=BATCH_SIZE, input_nodes=mask, shuffle=False
+    )
+    correct, total = 0, 0
     with torch.no_grad():
-        out = model(data.x, data.edge_index, data.iso_idx)
-    preds = out[mask].argmax(dim=1)
-    return (preds == data.y[mask]).sum().item() / mask.sum().item()
+        for batch in loader:
+            batch = batch.to(device)
+            out = model(batch.x, batch.edge_index, batch.iso_idx)[: batch.batch_size]
+            preds = out.argmax(dim=1)
+            y = batch.y[: batch.batch_size]
+            correct += (preds == y).sum().item()
+            total += batch.batch_size
+    return correct / total
 
 
 def build_polyad_class_map(
@@ -435,13 +461,9 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
     criterion = FocalLoss(gamma=2.0)
 
-    print("\nInitializing GPU Mini-Batching (NeighborLoader)...")
-    loader_kw = dict(data=data, num_neighbors=[15, 10], batch_size=2048)
-    train_loader = NeighborLoader(
-        **loader_kw, input_nodes=data.train_mask, shuffle=True
+    train_model(
+        model, data, device, epochs=100, criterion=criterion, optimizer=optimizer, print_every=10
     )
-    val_loader = NeighborLoader(**loader_kw, input_nodes=data.val_mask, shuffle=False)
-    test_loader = NeighborLoader(**loader_kw, input_nodes=data.test_mask, shuffle=False)
 
     test_acc = evaluate_batched(model, data, data.test_mask, device)
     print(f"\nTraining Complete. Base Test Top-1 Acc: {test_acc:.4f}")

@@ -2,7 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import SAGEConv
+from torch_geometric.loader import NeighborLoader
 from tqdm import tqdm
+
+# Full-batch forward passes over the ~2.5M-node graph OOM on both 8GB GPUs and
+# large CPU RAM (message-passing activations scale with edge count). All
+# inference below goes through mini-batches instead.
+NUM_NEIGHBORS = [15, 10]
+INFERENCE_BATCH_SIZE = 2048
 
 
 class CO2AssignmentGNN(nn.Module):
@@ -63,25 +70,41 @@ class CO2AssignmentGNN(nn.Module):
 
         return self.head(x)
 
+    def _batched_forward(self, data, device):
+        """One inference pass over every node, in NeighborLoader mini-batches.
+
+        Respects self.training (dropout stays on if the caller left the model
+        in train() mode, e.g. for MC Dropout sampling).
+        """
+        loader = NeighborLoader(
+            data, num_neighbors=NUM_NEIGHBORS, batch_size=INFERENCE_BATCH_SIZE, shuffle=False
+        )
+        num_classes = self.head[-1].out_features
+        out = torch.zeros((data.num_nodes, num_classes), dtype=torch.float32)
+        with torch.no_grad():
+            for batch in loader:
+                batch = batch.to(device)
+                logits = self.forward(batch.x, batch.edge_index, batch.iso_idx)
+                out[batch.n_id[: batch.batch_size].cpu()] = logits[: batch.batch_size].cpu()
+        return out
+
     def mc_dropout_predict(self, data, device, num_samples=30):
-        """Runs stochastic forward passes on the full graph."""
+        """Runs stochastic forward passes over the full graph (mini-batched)."""
         self.train()  # Force dropout ON
         num_classes = self.head[-1].out_features
-        num_nodes = data.x.shape[0]
-        data = data.to(device)
+        num_nodes = data.num_nodes
 
-        mean_probs = torch.zeros((num_nodes, num_classes), dtype=torch.float32, device="cpu")
-        sq_probs = torch.zeros((num_nodes, num_classes), dtype=torch.float32, device="cpu")
-        mean_entropy = torch.zeros(num_nodes, dtype=torch.float32, device="cpu")
+        mean_probs = torch.zeros((num_nodes, num_classes), dtype=torch.float32)
+        sq_probs = torch.zeros((num_nodes, num_classes), dtype=torch.float32)
+        mean_entropy = torch.zeros(num_nodes, dtype=torch.float32)
 
-        with torch.no_grad():
-            for _ in tqdm(range(num_samples), desc="MC Dropout Inference"):
-                logits = self.forward(data.x, data.edge_index, data.iso_idx)
-                probs = F.softmax(logits, dim=1).cpu()
-                H = -(probs * torch.log(probs + 1e-10)).sum(dim=1)
-                mean_probs += probs
-                sq_probs += probs ** 2
-                mean_entropy += H
+        for _ in tqdm(range(num_samples), desc="MC Dropout Inference"):
+            logits = self._batched_forward(data, device)
+            probs = F.softmax(logits, dim=1)
+            H = -(probs * torch.log(probs + 1e-10)).sum(dim=1)
+            mean_probs += probs
+            sq_probs += probs ** 2
+            mean_entropy += H
 
         mean_probs /= num_samples
         sq_probs /= num_samples
@@ -90,11 +113,9 @@ class CO2AssignmentGNN(nn.Module):
         return mean_probs, variance, mean_entropy
 
     def get_logits_and_probs(self, data, device):
-        """Runs a single full-graph forward pass to extract raw logits."""
+        """Runs a full-graph forward pass (mini-batched) to extract raw logits."""
         self.eval()
-        data = data.to(device)
-        with torch.no_grad():
-            all_logits = self.forward(data.x, data.edge_index, data.iso_idx).cpu()
+        all_logits = self._batched_forward(data, device)
         probs = F.softmax(all_logits, dim=1)
         return all_logits, probs
 
