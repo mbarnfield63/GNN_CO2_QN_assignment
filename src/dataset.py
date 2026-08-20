@@ -102,6 +102,11 @@ def process_single_isotope(iso_config):
         "O_A_mass",
         "O_B_mass",
         "is_marvel",
+        # ponytail: raw TROVE total-vibrational-symmetry species (A1/A2/B1/B2).
+        # Kept as a plain string here, one-hot encoded once in create_unified_dataset
+        # after all isotopes are concatenated (fixed 4-category set regardless of
+        # which species a given isotope actually populates).
+        "tot_sym",
     ]
     df = df[keep_cols]
     df["polyad"] = (2 * df["t1"]) + df["t2"] + (3 * df["t3"])
@@ -128,6 +133,19 @@ def create_unified_dataset():
 
     # 2. Concatenate into a single dataframe
     full_df = pd.concat(dfs, ignore_index=True)
+
+    # One-hot encode tot_sym over the fixed 4-species set (not just species seen
+    # in this run) so the column set is identical regardless of which isotopes
+    # are present: 626/636/828/838 only ever populate A1/A2, 727/737 populate
+    # all four (see CO2-Quantum-Number-Prediction plan 02 outcome).
+    TOT_SYM_CATEGORIES = ["A1", "A2", "B1", "B2"]
+    tot_sym_dummies = pd.get_dummies(
+        pd.Categorical(full_df["tot_sym"], categories=TOT_SYM_CATEGORIES)
+    ).astype(float)
+    tot_sym_dummies.columns = [f"tot_sym_{c}" for c in TOT_SYM_CATEGORIES]
+    full_df = pd.concat(
+        [full_df.drop(columns=["tot_sym"]), tot_sym_dummies], axis=1
+    )
 
     # 3. Create Combinatorial Classes based ONLY on MARVEL data
     marvel_df = full_df[full_df["is_marvel"]].copy()

@@ -35,6 +35,11 @@ FEATURE_COLS = [
     "C_mass",
     "O_A_mass",
     "O_B_mass",
+    # ponytail: must stay in sync with graph_builder.py's feature_cols, same order.
+    "tot_sym_A1",
+    "tot_sym_A2",
+    "tot_sym_B1",
+    "tot_sym_B2",
 ]
 
 
@@ -52,6 +57,12 @@ def load_and_prepare_data():
     train_df = df[df["train_mask"]]
     scaler.fit(train_df[FEATURE_COLS])
     df["polyad_int"] = df["polyad"].copy()
+    # Raw one-hot -> single category before scaling touches the tot_sym_* columns.
+    # Asymmetric isotopologues have no TROVE symmetry species (all-zero one-hot); "NA" for those.
+    tot_sym_cols = ["tot_sym_A1", "tot_sym_A2", "tot_sym_B1", "tot_sym_B2"]
+    df["tot_sym_cat"] = np.where(
+        df[tot_sym_cols].sum(axis=1) == 1, df[tot_sym_cols].idxmax(axis=1), "NA"
+    )
     df[FEATURE_COLS] = scaler.transform(df[FEATURE_COLS])
 
     if os.path.exists(GRAPH_CACHE_PATH):
@@ -222,6 +233,13 @@ def build_polyad_class_map(
     """
     Build polyad -> valid class_ids from MARVEL states, optionally extended
     by high-confidence bootstrapped predictions for sparse high-energy polyads.
+
+    Deliberately isotope- and tot_sym-blind: per-species MARVEL coverage per
+    polyad is too sparse to scope the pool that tight (tried it, coverage
+    collapsed dataset-wide ~73%->~41% for 626, ~68%->~43% for 727, no relative
+    gain for 727/737 since everyone lost coverage together). The Hungarian
+    grouping key below still splits blocks by tot_sym to cut same-block
+    species competition, just without also shrinking the pool they draw from.
     """
     # Seed from MARVEL ground truth (always authoritative)
     marvel_states = df[df["is_marvel"]][
@@ -290,15 +308,19 @@ def evaluate_physical_assignment(model, data, device, df, mapping_df, scaler):
         f"Example: polyad 10 has {len(polyad_to_class_ids.get(10, []))} valid classes."
     )
 
-    print("Applying Localized Hungarian Algorithm (per Isotope, J, Parity, Polyad)...")
+    print(
+        "Applying Localized Hungarian Algorithm (per Isotope, J, Parity, Polyad, tot_sym)..."
+    )
     print("  MARVEL train/val states are pre-locked to ground-truth classes;")
     print("  solver runs only on Ca + MARVEL test states with remaining class slots.")
     optimal_class_indices = np.full(len(df), -1, dtype=int)
     block_size_counts = []
 
-    grouped = df.groupby(["isotope_id", "J", "parity_encoded", "polyad_int"])
+    grouped = df.groupby(
+        ["isotope_id", "J", "parity_encoded", "polyad_int", "tot_sym_cat"]
+    )
 
-    for (iso_id, J_val, parity_val, polyad_val), group in tqdm(
+    for (iso_id, J_val, parity_val, polyad_val, tot_sym_val), group in tqdm(
         grouped, desc="Assigning Quantum States"
     ):
         valid_class_ids = polyad_to_class_ids.get(polyad_val, [])
@@ -435,7 +457,9 @@ def evaluate_physical_assignment(model, data, device, df, mapping_df, scaler):
     print(f"Assignment rate: {(optimal_class_indices >= 0).sum() / len(df) * 100:.1f}%")
 
     output_path = PREDICTIONS_PATH
-    df.to_csv(output_path, index=False)
+    tmp_path = f"{output_path}.tmp"
+    df.to_csv(tmp_path, index=False)
+    os.replace(tmp_path, output_path)  # ponytail: atomic rename sidesteps AV/OneDrive locks on the existing file
     print(f"Saved final assignments to {output_path}")
 
     return df

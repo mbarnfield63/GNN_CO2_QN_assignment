@@ -7,7 +7,6 @@ sys.path.insert(
 
 import torch
 import torch.nn as nn
-from torch_geometric.loader import NeighborLoader
 import pandas as pd
 import numpy as np
 import time
@@ -30,7 +29,7 @@ DUMMY_PENALTY = (
 
 
 def evaluate_physical_assignment_relaxed(
-    model, loader, device, num_nodes, df, mapping_df, scaler
+    model, loader, device, df, mapping_df, scaler
 ):
     """Enforces constraints with a dummy 'trash can' class for ghost states.
 
@@ -43,14 +42,14 @@ def evaluate_physical_assignment_relaxed(
 
     # Deterministic pass — drives the cost matrix and assigned_prob/assigned_margin
     print("\nRunning deterministic inference pass for assignment...")
-    all_logits, det_probs = model.get_logits_and_probs(loader, device, num_nodes)
+    all_logits, det_probs = model.get_logits_and_probs(loader, device)
     all_logits_cpu = all_logits.cpu().numpy()
     det_probs_cpu = det_probs.cpu().numpy()
 
     # MC Dropout pass — uncertainty signal columns only (not used for assignment)
     print("Calculating epistemic uncertainty via MC Dropout...")
     mean_probs_mc, variance, mean_sample_entropy = model.mc_dropout_predict(
-        loader, device, num_nodes, num_samples=30
+        loader, device, num_samples=30
     )
 
     print("Decoding combinatorial classes for mapping...")
@@ -74,10 +73,12 @@ def evaluate_physical_assignment_relaxed(
     df["mc_predictive_entropy"] = mc_pred_ent
     df["mc_bald"] = mc_pred_ent - mean_sample_entropy.numpy()
 
-    print("Applying Relaxed Localized Hungarian Algorithm (per Isotope, J, Parity)...")
+    print(
+        "Applying Relaxed Localized Hungarian Algorithm (per Isotope, J, Parity, tot_sym)..."
+    )
     optimal_class_indices = np.full(len(df), -1, dtype=int)
 
-    grouped = df.groupby(["isotope_id", "J", "parity_encoded"])
+    grouped = df.groupby(["isotope_id", "J", "parity_encoded", "tot_sym_cat"])
 
     for _, group in tqdm(grouped, desc="Assigning Quantum States"):
         idx = group.index.values
@@ -196,26 +197,7 @@ def main():
         print_every=20,
     )
 
-    test_loader = NeighborLoader(
-        data,
-        num_neighbors=[10, 10, 10, 10],
-        batch_size=2048,
-        input_nodes=data.test_mask,
-        shuffle=False,
-    )
-
-    print(f"Training Deep Residual GNN on fully-bootstrapped Generation 5 data...")
-    train_model(
-        model,
-        train_loader,
-        device,
-        epochs=100,
-        criterion=criterion,
-        optimizer=optimizer,
-        print_every=20,
-    )
-
-    test_acc = evaluate_batched(model, test_loader, device)
+    test_acc = evaluate_batched(model, data, data.test_mask, device)
     print(f"\nFinal Training Complete. Base Test Top-1 Acc: {test_acc:.4f}")
 
     final_df = evaluate_physical_assignment_relaxed(

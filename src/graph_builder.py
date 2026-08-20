@@ -83,6 +83,11 @@ def build_pyg_graph(df: pd.DataFrame) -> Data:
         "C_mass",
         "O_A_mass",
         "O_B_mass",
+        # ponytail: must stay in sync with train.py's FEATURE_COLS, same order.
+        "tot_sym_A1",
+        "tot_sym_A2",
+        "tot_sym_B1",
+        "tot_sym_B2",
     ]
 
     x = torch.tensor(df[feature_cols].values, dtype=torch.float).contiguous()
