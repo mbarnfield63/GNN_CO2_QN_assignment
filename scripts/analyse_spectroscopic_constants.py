@@ -61,6 +61,14 @@ B_E_626 = 0.39022  # B_e for main isotopologue 626 (cm-1), Herzberg/NIST
 # threshold are resonance-perturbed or mixed-assignment cases excluded from
 # the validation comparison.
 RMSE_CLEAN = 0.01  # cm-1
+# Bands with low fit RMSE but an unphysical B_v: all confident states lie in a
+# narrow high-J window far from J=0, so the low-order polynomial coefficients
+# extrapolate poorly despite a tight local fit. Excluded from the strip chart
+# only (spec_const_bv_scatter.png keeps the 628 case as the illustrative
+# example discussed in the text).
+STRIP_CHART_EXCLUDE_BANDS = {
+    (727, 3, 1, 1, 2, 0.0),  # B_v=0.500 cm-1 vs ~0.365-0.370 cluster; J=127-143 only
+}
 
 mpl.rcParams.update(thesis_params)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -331,6 +339,9 @@ def plot_bv_spread_by_isotopologue(df_marvel, df_gnn, save_path):
     """
     gnn_clean = df_gnn[df_gnn["rmse"] < RMSE_CLEAN]
     merge_keys = ["isotope_id", "m1", "m2", "m3", "r", "parity"]
+
+    band_key = gnn_clean[merge_keys].apply(tuple, axis=1)
+    gnn_clean = gnn_clean[~band_key.isin(STRIP_CHART_EXCLUDE_BANDS)]
 
     matched = df_marvel.merge(gnn_clean, on=merge_keys, suffixes=("_ma", "_gnn"))
 
