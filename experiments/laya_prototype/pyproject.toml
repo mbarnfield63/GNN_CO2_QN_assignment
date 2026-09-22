@@ -12,3 +12,11 @@ dependencies = [
     "torch>=2.14.0",
     "transformers>=5.17.0",
 ]
+
+# Without this, uv's default workspace auto-discovery walks up to ../../pyproject.toml
+# (the main GNN pipeline) and implicitly treats this project as one of its workspace
+# members, pulling its pyg-lib dependency into this env's resolution -- pyg-lib has no
+# wheel for some HPC platforms (e.g. manylinux_2_17), which breaks `uv sync` here even
+# though this project doesn't depend on it at all. Marking this pyproject.toml as its
+# own workspace root stops uv from walking further up.
+[tool.uv.workspace]
