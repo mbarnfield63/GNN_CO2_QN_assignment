@@ -1,0 +1,48 @@
+{
+  "test_size": 4824,
+  "perfect_4qn_match_accuracy": 93.71890547263682,
+  "inference_throughput_rows_per_sec": 161.61461373476914,
+  "peak_gpu_memory_mb": 1956.485632,
+  "per_qn_metrics": [
+    {
+      "Target": "AFGL_m1",
+      "MAE": 0.0087,
+      "F1-Macro": 0.9878,
+      "F1-Weighted": 0.994,
+      "Precision": 0.9947,
+      "Recall": 0.9816
+    },
+    {
+      "Target": "AFGL_m2",
+      "MAE": 0.0182,
+      "F1-Macro": 0.9732,
+      "F1-Weighted": 0.9867,
+      "Precision": 0.9669,
+      "Recall": 0.9798
+    },
+    {
+      "Target": "AFGL_m3",
+      "MAE": 0.0073,
+      "F1-Macro": 0.992,
+      "F1-Weighted": 0.9946,
+      "Precision": 0.996,
+      "Recall": 0.9882
+    },
+    {
+      "Target": "AFGL_r",
+      "MAE": 0.0674,
+      "F1-Macro": 0.8117,
+      "F1-Weighted": 0.9462,
+      "Precision": 0.8151,
+      "Recall": 0.8085
+    },
+    {
+      "Target": "MEAN",
+      "MAE": 0.0254,
+      "F1-Macro": 0.9412,
+      "F1-Weighted": 0.9804,
+      "Precision": 0.9432,
+      "Recall": 0.9395
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/172 [00:00<?, ?it/s]Loading weights: 100%|██████████| 172/172 [00:00<00:00, 3360.23it/s]
+[transformers] [1mModernBertForSequenceClassification LOAD REPORT[0m from: answerdotai/ModernBERT-large
+Key               | Status     | 
+------------------+------------+-
+decoder.bias      | UNEXPECTED | 
+classifier.weight | MISSING    | 
+classifier.bias   | MISSING    | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING:	those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+trainable params: 4,612,316 || all params: 400,669,112 || trainable%: 1.1512
+epoch 0: train_loss=1.6866 val_acc=0.5538 elapsed=736s
+epoch 1: train_loss=0.3895 val_acc=0.8283 elapsed=1487s
+epoch 2: train_loss=0.1389 val_acc=0.9021 elapsed=2223s
+epoch 3: train_loss=0.0877 val_acc=0.9374 elapsed=2966s
+epoch 4: train_loss=0.0669 val_acc=0.9374 elapsed=3708s
+epoch 5: train_loss=0.0549 val_acc=0.9343 elapsed=4446s
+early stopping at epoch 5, best val_acc=0.9374
+peak GPU memory (MB): 5358.2
+total train wall-clock (s): 4446
+best val_acc: 0.9374
