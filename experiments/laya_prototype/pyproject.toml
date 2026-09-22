@@ -4,15 +4,22 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
+# torch, numpy, pandas, and scikit-learn are all pinned/capped below their newest
+# manylinux_2_17 x86_64 wheel version (see per-package comments). Above those versions
+# each one only ships manylinux_2_28 wheels, which forces uv to build from source on
+# older-glibc HPC nodes (e.g. Hypatia) -- and that source build fails there too (numpy's
+# Meson/Cython build needs a newer C compiler than Hypatia's GCC 4.8.5). scipy isn't
+# listed directly (pulled in transitively by scikit-learn) but still has manylinux_2_17
+# wheels up to 1.16.3, well above anything these constraints would resolve to, so it
+# doesn't need its own pin.
 dependencies = [
     "accelerate>=1.15.0",
-    "pandas>=3.0.6",
+    "pandas>=2.3.0,<3.0",  # >=3.0 dropped manylinux_2_17 wheels; 2.3.2 is the newest with one
     "peft>=0.21.0",
-    "scikit-learn>=1.9.1",
-    # Pinned to 2.6.0: torch 2.7+ dropped manylinux_2_17 wheels (moved to manylinux_2_28
-    # only), which breaks `uv sync` on older-glibc HPC nodes (e.g. Hypatia). 2.6.0 is the
-    # newest version that still ships a manylinux_2_17 x86_64 wheel.
-    "torch==2.6.0",
+    "scikit-learn>=1.6.0,<1.8",  # >=1.8 dropped manylinux_2_17 wheels; 1.7.2 is the newest with one
+    "numpy>=2.1,<2.3",  # pinned explicitly so transformers' loose numpy constraint doesn't
+                         # pull in a newer, source-build-only version transitively
+    "torch==2.6.0",  # >=2.7 dropped manylinux_2_17 wheels; 2.6.0 is the newest with one
     "transformers>=5.17.0",
 ]
 
