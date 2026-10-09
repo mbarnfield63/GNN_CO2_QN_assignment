@@ -17,7 +17,7 @@
 \newcommand{\doi}[2]{\href{https://doi.org/#1}{#2}}
 
 \title{Project brief: machine learning quantum number assignment for water}
-\author{Marco Barnfield (\href{mailto:marco.barnfield.24@ucl.ac.uk}{marco.barnfield.24@ucl.ac.uk}), day-to-day supervisor\\PIs: Jonathan Tennyson, Sergei Yurchenko\\ExoMol group, UCL Physics \& Astronomy}
+\author{Marco Barnfield (\href{mailto:marco.barnfield.24@ucl.ac.uk}{marco.barnfield.24@ucl.ac.uk})}
 \date{October 2026}
 
 \begin{document}
@@ -32,11 +32,12 @@ The most recent attempt for water is \doi{10.1016/j.jqsrt.2026.109833}{Zobov et 
   \item 92,035 levels (38\%) receive $K_a$, $K_c$ and $v_2$;
   \item only 48,440 levels (20\%) receive the full label $(v_1\,v_2\,v_3)\,J\,K_a\,K_c$;
   \item no learning from experimental (MARVEL W2020) labels, and no per-level confidence;
+  \item the labels themselves are not published, so they cannot be used as training data or as a reference;
   \item not extended to the high-temperature POKAZATEL line list (much higher $J$ and energy).
 \end{itemize}
 The companion potential energy surface paper, \doi{10.1016/j.jqsrt.2026.109863}{Rogov et al.\ (2026, JQSRT 354, 109863)}, changes where machine learning can help. Their PES reproduces more than 90\% of the MARVEL \water\ levels with $J \le 15$ to a standard deviation of 0.01\,cm$^{-1}$, and predicts $J = 16$--27 to about 0.013\,cm$^{-1}$. Any computed level that has a MARVEL counterpart can therefore be labelled by energy matching alone; a classifier adds nothing there. The real problem is the levels with \emph{no} MARVEL counterpart, which make up most of the unlabelled 80\%, plus the small fraction the PES misses by more than the tolerance.
 
-As far as we know, no published machine learning method assigns water quantum numbers. This project asks whether a pretrained decision model (Laya), trained on the levels that can be labelled (by energy matching or by Zobov et al.), can extend labels to the levels that have no experimental counterpart, with calibrated confidence.
+As far as we know, no published machine learning method assigns water quantum numbers. This project asks whether a pretrained decision model (Laya), trained on the levels labelled by matching to MARVEL, can extend labels to the levels that have no experimental counterpart, with calibrated confidence.
 
 \section{Water notation, minimum needed}
 
@@ -98,7 +99,7 @@ Ticking off every item gives a \emph{Journal of Quantitative Spectroscopy and Ra
   \item \textbf{Baselines} (Method): energy matching for levels with a MARVEL counterpart; extrapolation of labelled rotational ladders (energy against $J(J+1)$ per vibrational state and $K_a$) for those without.
   \item \textbf{Classifier result} (Results): Laya plus Hungarian assignment beats the ladder baseline on the held-out high-energy and high-$J$ levels, reported per energy band.
   \item \textbf{Calibrated confidence} (Results): a threshold on \texttt{assigned\_margin} or calibrated probability with a measured error rate on held-out levels.
-  \item \textbf{Coverage} (Results): fraction of UCLH2O296 fully labelled at that threshold, compared with the 20\% of Zobov et al., plus agreement with their labels where both exist. The labels are released.
+  \item \textbf{Coverage} (Results): fraction of UCLH2O296 fully labelled at that threshold, compared with the 20\% reported by Zobov et al. The labels are released, which their work did not do.
   \item \textbf{Judge} (Results): whether Laya's native head improves contested levels, quantified. A negative result counts.
   \item \textbf{Failure analysis} (Discussion): where and why labels fail (local modes, polyad mixing), and what that means for POKAZATEL and other ExoMol molecules.
   \item \textbf{Manuscript}: the above written up and submitted.
@@ -117,10 +118,8 @@ Everything molecule-specific (parsing, matching, label encoding, serialisation, 
 
 \paragraph{Data.}
 \begin{itemize}
-  \item UCLH2O296 labelled levels: Zobov et al.\ (2026), open access; \red{check supplementary data availability, otherwise ask supervisor}.
-  \item MARVEL W2020 \water\ levels: supplementary material of Furtenbacher et al.\ (2020).
+  \item From the supervisor: the full MARVEL energy levels for each water isotopologue, and the associated calculated levels (UCLH2O296 for \water, DVR3D levels for \hdo\ and others) as needed. Zobov et al.\ did not publish their labels, so all training labels come from MARVEL matching.
   \item POKAZATEL (stretch): \url{https://www.exomol.com/data/molecules/H2O/1H2-16O/POKAZATEL/}.
-  \item From the supervisor: \hdo\ computed and MARVEL levels for the warm-up.
 \end{itemize}
 
 \end{document}
