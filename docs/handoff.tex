@@ -1,0 +1,126 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+\setlist{nosep,leftmargin=*}
+\emergencystretch=3em
+\usepackage[compact]{titlesec}
+\newcommand{\red}[1]{\textcolor{red}{#1}}
+\newcommand{\water}{H\textsubscript{2}\textsuperscript{16}O}
+\newcommand{\hdo}{HD\textsuperscript{16}O}
+\newcommand{\cotwo}{CO\textsubscript{2}}
+\newcommand{\doi}[2]{\href{https://doi.org/#1}{#2}}
+
+\title{Project brief: machine learning quantum number assignment for water}
+\author{Marco Barnfield (\href{mailto:marco.barnfield.24@ucl.ac.uk}{marco.barnfield.24@ucl.ac.uk}), day-to-day supervisor\\PIs: Jonathan Tennyson, Sergei Yurchenko\\ExoMol group, UCL Physics \& Astronomy}
+\date{October 2026}
+
+\begin{document}
+\maketitle
+
+\section{Problem and gap}
+
+Variational codes (DVR3D for water, TROVE for polyatomics, Duo for diatomics) compute energy levels very accurately, but each level only comes out with its rigorous labels: total angular momentum $J$ and symmetry. The approximate quantum numbers that spectroscopists actually use, $(v_1\,v_2\,v_3)$ and $(K_a, K_c)$ for water, have to be assigned afterwards. Without them, a computed level cannot be matched to experiment, replaced with an empirical (MARVEL) energy, or used to build a band-resolved line list.
+
+The most recent attempt for water is \doi{10.1016/j.jqsrt.2026.109833}{Zobov et al.\ (2026, JQSRT 354, 109833)}, who labelled the UCLH2O296 room-temperature line list (241,234 states, $J \le 26$, up to 44,500\,cm$^{-1}$) with a hand-tuned combination of five rule-based methods (wavefunction contribution, node counting, a modified Hose--Taylor method, label merging, and $K_a$ energy-dependence correction). The result:
+\begin{itemize}
+  \item 92,035 levels (38\%) receive $K_a$, $K_c$ and $v_2$;
+  \item only 48,440 levels (20\%) receive the full label $(v_1\,v_2\,v_3)\,J\,K_a\,K_c$;
+  \item no learning from experimental (MARVEL W2020) labels, and no per-level confidence;
+  \item not extended to the high-temperature POKAZATEL line list (much higher $J$ and energy).
+\end{itemize}
+The companion potential energy surface paper, \doi{10.1016/j.jqsrt.2026.109863}{Rogov et al.\ (2026, JQSRT 354, 109863)}, changes where machine learning can help. Their PES reproduces more than 90\% of the MARVEL \water\ levels with $J \le 15$ to a standard deviation of 0.01\,cm$^{-1}$, and predicts $J = 16$--27 to about 0.013\,cm$^{-1}$. Any computed level that has a MARVEL counterpart can therefore be labelled by energy matching alone; a classifier adds nothing there. The real problem is the levels with \emph{no} MARVEL counterpart, which make up most of the unlabelled 80\%, plus the small fraction the PES misses by more than the tolerance.
+
+As far as we know, no published machine learning method assigns water quantum numbers. This project asks whether a pretrained decision model (Laya), trained on the levels that can be labelled (by energy matching or by Zobov et al.), can extend labels to the levels that have no experimental counterpart, with calibrated confidence.
+
+\section{Water notation, minimum needed}
+
+\begin{itemize}
+  \item \textbf{Vibration} $(v_1\,v_2\,v_3)$: symmetric stretch, bend, antisymmetric stretch. Because the stretch frequency is roughly twice the bend, levels group into polyads $P = 2v_1 + v_2 + 2v_3$ whose members mix strongly. Above about 10,000\,cm$^{-1}$ the stretches behave as local modes, and normal mode labels become ambiguous. Expect most errors here.
+  \item \textbf{Rotation} $J\,K_a\,K_c$: water is an asymmetric top, so each $J$ has $2J+1$ rotational levels labelled by $K_a$ and $K_c$ with $K_a + K_c \in \{J, J+1\}$. Given $J$, $K_a$ and the rotational symmetry, $K_c$ is fixed, so the rotational label effectively reduces to $K_a$.
+  \item \textbf{Symmetry}: levels split into ortho and para (nuclear spin), set by the parity of $v_3 + K_a + K_c$, and further into C$_{2v}$ symmetry blocks. A computed level's symmetry block is exact; within one $(J, \text{block})$ every full label can appear at most once.
+  \item \textbf{MARVEL}: an empirical network method that inverts measured transitions into energy levels with uncertainties and labels. For \water\ this is the \doi{10.1063/5.0008253}{W2020 database}.
+\end{itemize}
+
+\section{Background: \texorpdfstring{\cotwo}{CO2} and Laya}
+
+The group has assigned quantum numbers to 12 \cotwo\ isotopologues with a graph neural network (\doi{10.1016/j.jqsrt.2026.110111}{Barnfield, Yurchenko \& Tennyson 2026, JQSRT 365, 110111}), used in the ExoMol \cotwo\ line lists (\doi{10.1093/mnras/staf2135}{Yurchenko et al.\ 2025}). Three ideas transfer directly to water:
+\begin{enumerate}
+  \item \textbf{Uniqueness via Hungarian assignment.} A per-level classifier happily gives two levels the same label. Solve a linear assignment problem on cost $1-p$ within each block of mutually exclusive labels, here $(J, \text{symmetry block})$.
+  \item \textbf{Post-solver confidence.} Use the margin between the assigned label and the runner-up \emph{after} the solver (\texttt{assigned\_margin}), not the raw argmax margin. It automatically penalises contested levels.
+  \item \textbf{Bootstrapping.} Promote confidently labelled levels into the training set and retrain, generation by generation.
+\end{enumerate}
+
+\paragraph{Laya.} Laya (ConvAI Innovations, Apache-2.0, \url{https://huggingface.co/convaiinnovations/laya}) is a ModernBERT-large encoder (421M parameters) with a decision head that answers multiple-choice or yes/no questions about a text ``state'' with calibrated probabilities, about 33\,ms per call. Known limits: accuracy drops sharply above about 20 options, it ships over-confident (refit the temperature), and the English checkpoint has an invalid temperature for choice questions with 11 or more options. \textbf{Keep native-head questions to 10 options or fewer.}
+
+On \cotwo, the Laya backbone was LoRA fine-tuned as a plain row classifier (each level serialised as one line of text, no graph). It reached 94.88\% exact match on held-out levels, against 94.5--96.9\% for the GNN. So the classifier is not the bottleneck for water; the label encoding is, because the \cotwo\ label scheme has no water equivalent.
+
+\section{The project}
+
+The project is free form. The steps below are a suggested route, not a schedule.
+
+\paragraph{Suggested warm-up: \hdo\ computed-to-MARVEL matching.} Match computed \hdo\ levels (DVR3D) to MARVEL \hdo\ levels by Hungarian assignment on $|E_\text{calc} - E_\text{MARVEL}|$ per $(J, \text{block})$, then ask Laya's native head to judge the doubtful pairs (yes/no, or a $\le$10-option choice). Isotopologue calculations are less accurate than \water, so energy matching is a real test here. Small, fully checkable, and it builds the data handling used later.
+
+\paragraph{Main task: labelling UCLH2O296.}
+\begin{enumerate}
+  \item \textbf{Energy matching (not ML)}: transfer W2020 labels onto UCLH2O296 per $(J, \text{block})$, accepting pairs within a few times 0.013\,cm$^{-1}$. This labels the experimentally known levels and builds the training set. Pairs outside the tolerance form a hard test set.
+  \item \textbf{Classifier}: Laya backbone as a row classifier, followed by Hungarian assignment per $(J, \text{block})$.
+  \item \textbf{Judge}: Laya native head adjudicates low-margin or contested levels, choosing among $\le$10 candidate labels from the classifier.
+  \item \textbf{Calibration}: temperature-scale probabilities on held-out levels, then pick a confidence threshold that targets a stated error rate.
+  \item \textbf{Optional}: bootstrap generations, as for \cotwo.
+\end{enumerate}
+
+\paragraph{Open design choices.}
+\begin{itemize}
+  \item \textbf{Label encoding}: (a) one joint class per $(v_1 v_2 v_3) K_a$, large and sparse; (b) separate vibrational and $K_a$ heads with $K_c$ derived; (c) no fixed class list, generate candidates and let Laya choose. Option (b) is the suggested start.
+  \item \textbf{Features in the text state}: $E$, $J$, symmetry block, ortho/para, energy gaps to neighbours in the same block, and the label and energy of the matching level at $J-1$ (the rotational ladder). Any DVR3D wavefunction diagnostics available are worth trying.
+  \item \textbf{Evaluation split}: the labelled levels are biased towards low energy and low $J$, while the target levels sit mostly above them. Hold out the highest energy bands and highest $J$ of the labelled set, not a random sample, so the test mimics the target.
+\end{itemize}
+
+\paragraph{Stretch: other classifiers.} Laya is one choice of pretrained model, not the only one. Worth comparing if time allows:
+\begin{itemize}
+  \item \textbf{Tabular foundation models} (e.g.\ TabPFN): take numeric features directly instead of text, which avoids tokenising energies. Best suited to the small candidate sets of the judge step.
+  \item \textbf{Small open-weight LLMs} as judges: score each candidate label by log-likelihood instead of generating text.
+  \item \textbf{Smaller encoders} (ModernBERT-base, DeBERTa-v3): same recipe as Laya, faster, shows whether model size matters.
+  \item \textbf{Gradient-boosted trees} (LightGBM): the non-LLM sanity check every ML result should beat.
+\end{itemize}
+
+\section{Success criteria}
+
+Ticking off every item gives a \emph{Journal of Quantitative Spectroscopy and Radiative Transfer} paper, working title \emph{Machine learning quantum number assignment for water line lists}. Each item names the paper section it fills.
+\begin{enumerate}
+  \item \textbf{Dataset} (Data): UCLH2O296 matched to W2020, with the tolerance, counts of matched, unmatched and large-residual levels, and the evaluation split. Released as a file.
+  \item \textbf{Baselines} (Method): energy matching for levels with a MARVEL counterpart; extrapolation of labelled rotational ladders (energy against $J(J+1)$ per vibrational state and $K_a$) for those without.
+  \item \textbf{Classifier result} (Results): Laya plus Hungarian assignment beats the ladder baseline on the held-out high-energy and high-$J$ levels, reported per energy band.
+  \item \textbf{Calibrated confidence} (Results): a threshold on \texttt{assigned\_margin} or calibrated probability with a measured error rate on held-out levels.
+  \item \textbf{Coverage} (Results): fraction of UCLH2O296 fully labelled at that threshold, compared with the 20\% of Zobov et al., plus agreement with their labels where both exist. The labels are released.
+  \item \textbf{Judge} (Results): whether Laya's native head improves contested levels, quantified. A negative result counts.
+  \item \textbf{Failure analysis} (Discussion): where and why labels fail (local modes, polyad mixing), and what that means for POKAZATEL and other ExoMol molecules.
+  \item \textbf{Manuscript}: the above written up and submitted.
+\end{enumerate}
+
+\section{Code, compute and data}
+
+\paragraph{Code.} Fork \url{https://github.com/mbarnfield63/GNN_CO2_QN_assignment} and work on branch \texttt{h2o-student}, a clean slate with no \cotwo\ code. It holds this brief and the two pieces worth reusing:
+\begin{itemize}
+  \item \texttt{src/assignment.py}: Hungarian assignment per block, with locked (known) labels and \texttt{assigned\_margin}. Ported from the \cotwo\ pipeline.
+  \item \texttt{src/train\_classifier.py}: LoRA fine-tune of the Laya backbone on \texttt{\{"text", "label"\}} rows, plus a \texttt{predict} command that writes logits for the assignment step.
+\end{itemize}
+Everything molecule-specific (parsing, matching, label encoding, serialisation, evaluation) is yours to write. The \cotwo\ code is on the repository's other branches if you want to see how it was done there: the GNN pipeline on \texttt{main}, the Laya prototype in \texttt{experiments/laya\_prototype/} on \texttt{CDSD-Analysis}.
+
+\paragraph{Compute.} Install \texttt{uv}, then run \texttt{uv sync} in the repository. Training needs an NVIDIA GPU with at least 8\,GB (RTX 20-series or newer); on \cotwo\ it peaked at 5.4\,GB and took about 75 minutes on an RTX 2070. Inference needs about 2\,GB. Without a suitable GPU, use a free T4 on Google Colab (\url{https://colab.research.google.com}, Runtime $\rightarrow$ Change runtime type $\rightarrow$ T4 GPU).
+
+\paragraph{Data.}
+\begin{itemize}
+  \item UCLH2O296 labelled levels: Zobov et al.\ (2026), open access; \red{check supplementary data availability, otherwise ask supervisor}.
+  \item MARVEL W2020 \water\ levels: supplementary material of Furtenbacher et al.\ (2020).
+  \item POKAZATEL (stretch): \url{https://www.exomol.com/data/molecules/H2O/1H2-16O/POKAZATEL/}.
+  \item From the supervisor: \hdo\ computed and MARVEL levels for the warm-up.
+\end{itemize}
+
+\end{document}
